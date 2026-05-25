@@ -296,9 +296,14 @@
   <aside class="w-56 min-w-[14rem] bg-white border-l border-gray-200 overflow-y-auto px-3 py-3 flex-shrink-0">
     <div class="filter-label mb-2">My Courses</div>
     <div id="my-courses-list" class="text-xs text-gray-400"></div>
-    <div class="border-t border-gray-100 mt-3 pt-2">
-      <div class="filter-label mb-2">Past Courses</div>
-      <div id="past-courses-list" class="text-xs"></div>
+    <div class="filter-section" style="border-bottom:none; padding-bottom:0">
+      <div class="filter-toggle">
+        <div class="filter-label">Past Courses</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="past-courses-list" class="text-xs"></div>
+      </div>
     </div>
   </aside>
 
