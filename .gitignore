@@ -1,2 +1,5 @@
-data/
+data/**
+!data/
+!data/FA26/
+!data/FA26/catalog.json
 .claude/
