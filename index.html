@@ -217,7 +217,8 @@
     <table class="w-full text-xs border-collapse">
       <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm">
         <tr>
-          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="courseId">Course</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="subject">Subj</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="catalogNbrNum">No.</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="openCount">Open</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="title">Title</th>
           <th class="px-3 py-2 text-right border-b border-gray-200" data-col="creditsNum">Cr</th>
@@ -375,8 +376,9 @@ function buildRows(catalog) {
       primaries,
       courseId:   course.courseId,
       subject:    course.subject,
-      catalogNbr: course.catalogNbr,
-      sectionCode:rep.section,
+      catalogNbr:    course.catalogNbr,
+      catalogNbrNum: parseInt(course.catalogNbr) || 0,
+      sectionCode:   rep.section,
       title:      course.titleShort,
       credits:    course.credits,
       creditsNum: parseFloat(course.credits) || 0,
@@ -521,7 +523,7 @@ function statusBadge(s) {
 function renderTable() {
   const tbody = document.getElementById('table-body');
   if (!filteredRows.length) {
-    tbody.innerHTML = '<tr><td colspan="12" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
     return;
   }
   const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
@@ -533,10 +535,11 @@ function renderTable() {
     const badges = row.distrReqs.map(c =>
       `<span class="badge badge-distr" title="${c}">${c.split('-')[0]}</span>`).join('');
     const openLabel = row.totalCount > 1
-      ? `<span class="${row.openCount ? 'text-green-700' : 'text-red-700'}">${row.openCount}</span><span class="text-gray-400">/${row.totalCount}</span>`
-      : (row.openCount ? '<span class="text-green-700">Open</span>' : '<span class="text-red-700">Closed</span>');
+      ? `<span class="badge ${row.openCount ? 'badge-open' : 'badge-closed'}">${row.openCount}/${row.totalCount}</span>`
+      : (row.openCount ? '<span class="badge badge-open">Open</span>' : '<span class="badge badge-closed">Closed</span>');
     return `<tr class="row border-b border-gray-100 ${bg}" onclick="showModal(${i})">
-      <td class="px-3 py-1.5 font-medium" style="color:#B31B1B">${row.courseId}</td>
+      <td class="px-3 py-1.5 font-medium" style="color:#B31B1B">${row.subject}</td>
+      <td class="px-3 py-1.5 font-medium" style="color:#B31B1B">${row.catalogNbr}</td>
       <td class="px-3 py-1.5 tabular-nums text-xs">${openLabel}</td>
       <td class="px-3 py-1.5 max-w-[200px] truncate" title="${row.title}">${row.title}</td>
       <td class="px-3 py-1.5 text-right tabular-nums">${row.credits}</td>
@@ -585,6 +588,30 @@ function showModal(i) {
 
 let modalCourse = null;
 
+function sectionFailsFilters(sec) {
+  if (filters.modes.size     && !filters.modes.has(sec.instructionMode || ''))  return true;
+  if (filters.locations.size && !filters.locations.has(sec.location || ''))     return true;
+  if (filters.openOnly       && sec.openStatus !== 'O')                         return true;
+  const m = sec.meetings?.[0] || {};
+  if (filters.excludeDays.size && m.days) {
+    if ([...parseDays(m.days)].some(d => filters.excludeDays.has(d))) return true;
+  }
+  if (filters.timeEnabled) {
+    const s = parseTime(m.timeStart), e = parseTime(m.timeEnd);
+    if (s !== null && (s < filters.notBefore || e > filters.notAfter)) return true;
+  }
+  if (filters.hideConflicts) {
+    const days = parseDays(m.days || '');
+    const s = parseTime(m.timeStart), e = parseTime(m.timeEnd);
+    if (s !== null) {
+      for (const mc of myCourses)
+        for (const mcm of mc.meetings)
+          if (overlaps(days, s, e, mcm.days, mcm.start, mcm.end)) return true;
+    }
+  }
+  return false;
+}
+
 function renderModalSections(c) {
   modalCourse = c;
   const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
@@ -598,6 +625,7 @@ function renderModalSections(c) {
   }
 
   function renderSec(sec) {
+    const failed = sectionFailsFilters(sec);
     const m     = sec.meetings?.[0] || {};
     const time  = m.timeStart ? `${m.days||''} ${fmtTime(m.timeStart)}–${fmtTime(m.timeEnd)}` : 'TBA';
     const instr = (m.instructors || []).join(', ') || 'TBA';
@@ -609,12 +637,15 @@ function renderModalSections(c) {
         : 'border-red-700 text-red-700 hover:bg-red-700 hover:text-white'}"
       ${isMine ? 'disabled' : ''}>
       ${isMine ? 'Added ✓' : '+ Add'}</button>`;
+    const infoClass = `flex items-center gap-2 flex-1 min-w-0${failed ? ' opacity-40 line-through' : ''}`;
     return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-100 text-xs">
-      <span class="w-10 text-gray-400 shrink-0">${sec.section}</span>
-      <span class="w-36 tabular-nums shrink-0">${time}</span>
-      <span class="flex-1 text-gray-600 truncate">${instr}</span>
-      <span class="shrink-0">${statusBadge(sec.openStatus)}</span>
-      <span class="shrink-0">${btn}</span>
+      <div class="${infoClass}">
+        <span class="w-10 text-gray-400 shrink-0">${sec.section}</span>
+        <span class="w-36 tabular-nums shrink-0">${time}</span>
+        <span class="flex-1 text-gray-600 truncate">${instr}</span>
+        <span class="shrink-0">${statusBadge(sec.openStatus)}</span>
+      </div>
+      <span class="shrink-0${failed ? ' opacity-40' : ''}">${btn}</span>
     </div>`;
   }
 
@@ -954,12 +985,12 @@ function clearPreview()   { previewRow = null; renderCalendar(); }
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   document.getElementById('table-body').innerHTML =
-    '<tr><td colspan="12" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
+    '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
   try {
     catalog = await fetch('data/FA26/catalog.json').then(r => r.json());
   } catch(e) {
     document.getElementById('table-body').innerHTML =
-      '<tr><td colspan="12" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
+      '<tr><td colspan="13" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
     return;
   }
   rows = buildRows(catalog);
