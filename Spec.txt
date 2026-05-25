@@ -1,0 +1,52 @@
+    - **Hide conflicts** toggle: removes any lecture section that overlaps a locked time block
+    - Conflict detection is lecture-only; discussions/labs are shown in the modal
+
+    ## Course Detail Modal
+
+    Opened by clicking any table row.
+
+    - Header: course ID, long title, credits, career, college
+    - Distribution requirement badges (full descriptions)
+    - Description
+    - Prerequisites / Corequisites
+    - Crosslistings
+    - Grading basis
+    - When offered / Last terms offered
+    - Enrollment priority notes
+    - **Sections table:** all sections (LEC, DIS, LAB) with days, time, instructor, open status
+    - Button: **Add to My Courses**
+
+    ## Conflict Logic
+
+    - A lecture section is **hidden** (when "hide conflicts" is on) if its meeting time overlaps any locked course's meeting time
+    - Overlap check: two time ranges overlap if `start1 < end2 && start2 < end1`, on the same day(s)
+    - Discussion/lab times are not used for conflict detection (flexible enrollment)
+
+    ## Tech Stack
+
+    - Single `index.html` — no build step, no framework
+    - Vanilla JavaScript — filter engine as pure functions
+    - Tailwind CSS via CDN — styling
+    - Data loaded via `fetch('./data/FA26/catalog.json')` at startup
+
+    ## Files
+
+    CUCourseScheduler/
+    ├── index.html
+    ├── download_catalog.py
+    ├── preprocess_catalog.py
+    ├── collate_distr_reqs.py
+    └── data/
+        └── FA26/
+            ├── catalog.json        ← browser loads this
+            ├── distr_reqs.json
+            └── .json      ← raw downloads
+
+    ## Out of Scope (v1)
+
+    - Authentication
+    - Multiple rosters simultaneously
+    - Saving schedules across sessions
+    - Seat count / waitlist position
+    - Mobile layout optimization
+    - Performance optimization (pagination, virtual scroll)

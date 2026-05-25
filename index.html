@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CU Course Scheduler · FA26</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --red: #B31B1B; }
+    .badge { display:inline-block; font-size:0.65rem; padding:1px 5px; border-radius:3px; margin:1px; background:#e5e7eb; color:#374151; }
+    .badge-open   { background:#d1fae5; color:#065f46; }
+    .badge-closed { background:#fee2e2; color:#991b1b; }
+    .badge-wait   { background:#fef3c7; color:#92400e; }
+    .badge-distr  { background:#dbeafe; color:#1e40af; }
+    .badge-expl   { background:#dcfce7; color:#166534; }
+    tr.row:hover  { background:#fef2f2 !important; cursor:pointer; }
+    th { cursor:pointer; user-select:none; white-space:nowrap; }
+    th:hover { background:#e5e7eb; }
+    th.sort-asc::after  { content:' ↑'; color:#B31B1B; }
+    th.sort-desc::after { content:' ↓'; color:#B31B1B; }
+    .sidebar { width:272px; min-width:272px; }
+    .filter-section { border-bottom:1px solid #e5e7eb; padding:8px 0; }
+    .filter-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; }
+    .filter-toggle { display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; margin-bottom:5px; }
+    .filter-toggle:hover .filter-label { color:#6b7280; }
+    .chevron { font-size:0.6rem; color:#d1d5db; transition:transform 0.15s; }
+    .filter-section.collapsed .chevron { transform:rotate(-90deg); }
+    .filter-body { display:block; }
+    .filter-section.collapsed .filter-body { display:none; }
+    .hidden-pickers { display:none; }
+    .checklist { max-height:140px; overflow-y:auto; }
+    .checklist label { display:flex; align-items:center; gap:5px; font-size:0.75rem; padding:2px 0; cursor:pointer; }
+    .checklist label:hover { color:#B31B1B; }
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:50; overflow-y:auto; padding:2rem 1rem; }
+    .modal-overlay.open { display:block; }
+    .modal-box { background:white; border-radius:8px; width:680px; max-width:100%; margin:0 auto; padding:24px; }
+    .mc-item { display:flex; justify-content:space-between; align-items:flex-start; font-size:0.75rem; padding:4px 0; border-bottom:1px solid #f3f4f6; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 text-sm h-screen flex flex-col">
+
+<!-- Header -->
+<header class="flex items-center gap-4 px-5 py-2.5 text-white shadow-sm flex-shrink-0" style="background:#B31B1B;">
+  <span class="font-bold text-base tracking-tight">CU Course Scheduler</span>
+  <span class="text-red-300 text-xs font-mono">FA26</span>
+  <span id="result-count" class="ml-auto text-red-300 text-xs"></span>
+</header>
+
+<div class="flex flex-1 min-h-0">
+
+  <!-- Sidebar -->
+  <aside class="sidebar bg-white border-r border-gray-200 overflow-y-auto px-3 py-2 flex-shrink-0">
+
+    <!-- Search (always visible, no toggle) -->
+    <div class="filter-section">
+      <div class="filter-label mb-1">Search</div>
+      <input id="f-search" type="text" placeholder="Course code or title…"
+        class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-red-700">
+    </div>
+
+    <!-- Schedule (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Schedule</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div class="text-xs text-gray-500 mb-1">Exclude days</div>
+        <div class="flex gap-3 mb-3">
+          <label class="flex flex-col items-center gap-0.5 text-xs cursor-pointer"><input type="checkbox" data-day="M"> M</label>
+          <label class="flex flex-col items-center gap-0.5 text-xs cursor-pointer"><input type="checkbox" data-day="T"> T</label>
+          <label class="flex flex-col items-center gap-0.5 text-xs cursor-pointer"><input type="checkbox" data-day="W"> W</label>
+          <label class="flex flex-col items-center gap-0.5 text-xs cursor-pointer"><input type="checkbox" data-day="R"> Th</label>
+          <label class="flex flex-col items-center gap-0.5 text-xs cursor-pointer"><input type="checkbox" data-day="F"> F</label>
+        </div>
+        <div class="flex flex-col gap-1.5 text-xs">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="f-time-filter"> Not before / not after
+          </label>
+          <div id="time-pickers" class="flex flex-col gap-1.5 mt-1 hidden-pickers">
+            <label class="text-gray-500 flex items-center gap-1">Not before
+              <input type="time" id="f-not-before" value="08:00"
+                class="border border-gray-300 rounded px-1 py-0.5 text-xs">
+            </label>
+            <label class="text-gray-500 flex items-center gap-1">Not after &nbsp;
+              <input type="time" id="f-not-after" value="18:00"
+                class="border border-gray-300 rounded px-1 py-0.5 text-xs">
+            </label>
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-xs cursor-pointer mt-2">
+          <input type="checkbox" id="f-hide-conflicts"> Hide courses conflicting with my courses
+        </label>
+      </div>
+    </div>
+
+    <!-- Subject (expanded by default) -->
+    <div class="filter-section">
+      <div class="filter-toggle">
+        <div class="filter-label">Subject</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <input id="subject-search" type="text" placeholder="Filter…"
+          class="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-1 focus:outline-none focus:border-red-700">
+        <div id="subject-list" class="checklist"></div>
+      </div>
+    </div>
+
+    <!-- Distribution Requirements (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Distribution Req.</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div class="flex gap-4 mb-1.5 text-xs">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="radio" name="distr-type" value="any" checked> Any
+          </label>
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="radio" name="distr-type" value="all"> All
+          </label>
+        </div>
+        <input id="distr-search" type="text" placeholder="Filter…"
+          class="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-1 focus:outline-none focus:border-red-700">
+        <div id="distr-list" class="checklist"></div>
+      </div>
+    </div>
+
+    <!-- Career (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Career</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="career-list" class="checklist"></div>
+      </div>
+    </div>
+
+    <!-- College (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">College</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="college-list" class="checklist"></div>
+      </div>
+    </div>
+
+    <!-- Credits (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Credits</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="credits-list" class="checklist"></div>
+      </div>
+    </div>
+
+    <!-- Mode (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Instruction Mode</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="mode-list" class="checklist"></div>
+      </div>
+    </div>
+
+    <!-- Status (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Status</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <label class="flex items-center gap-2 text-xs cursor-pointer">
+          <input type="checkbox" id="f-open-only"> Open sections only
+        </label>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Table -->
+  <main class="flex-1 overflow-auto">
+    <table class="w-full text-xs border-collapse">
+      <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm">
+        <tr>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="courseId">Course</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="sectionCode">§</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="title">Title</th>
+          <th class="px-3 py-2 text-right border-b border-gray-200" data-col="creditsNum">Cr</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="days">Days</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="timeStartMin">Time</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="instructor">Instructor</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="distrKey">Dist. Req.</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="mode">Mode</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="status">Status</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="career">Career</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="college">College</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="components">Comp.</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </main>
+
+  <!-- Right sidebar: My Courses -->
+  <aside class="w-56 min-w-[14rem] bg-white border-l border-gray-200 overflow-y-auto px-3 py-3 flex-shrink-0 flex flex-col">
+    <div class="filter-label mb-2">My Courses</div>
+    <div id="my-courses-list" class="text-xs text-gray-400 flex-1"></div>
+  </aside>
+
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-overlay" onclick="maybeCloseModal(event)">
+  <div class="modal-box">
+    <div class="flex justify-between items-start mb-3">
+      <div>
+        <h2 id="modal-title" class="text-base font-bold leading-tight"></h2>
+        <div id="modal-meta" class="text-gray-400 text-xs mt-0.5"></div>
+      </div>
+      <button onclick="closeModal()" class="text-gray-300 hover:text-gray-600 text-2xl leading-none ml-4">&times;</button>
+    </div>
+    <div id="modal-badges" class="mb-3 flex flex-wrap gap-0.5"></div>
+    <p id="modal-description" class="text-sm text-gray-700 mb-3 leading-relaxed"></p>
+    <div id="modal-details" class="text-xs text-gray-600 mb-4 space-y-1"></div>
+    <div class="text-xs font-semibold uppercase text-gray-400 tracking-wide mb-2">Sections</div>
+    <div id="modal-sections"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let catalog = [];
+let rows = [];
+let filteredRows = [];
+let sortCol = 'courseId';
+let sortDir = 1;
+let myCourses = []; // {classNbr, label, meetings:[{days:Set,start:int,end:int}]}
+
+const filters = {
+  search: '',
+  subjects:    new Set(),
+  careers:     new Set(),
+  colleges:    new Set(),
+  credits:     new Set(),
+  modes:       new Set(),
+  openOnly:    false,
+  distrReqs:   new Set(),
+  distrReqType:'any',
+  excludeDays: new Set(),
+  notBefore:   8 * 60,
+  notAfter:    18 * 60,
+  timeEnabled: false,
+  hideConflicts: false,
+};
+
+// ── Time helpers ───────────────────────────────────────────────────────────────
+function parseTime(str) {
+  if (!str) return null;
+  const m = str.match(/(\d+):(\d+)(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1]), min = parseInt(m[2]);
+  if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+  if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function parseDays(pattern) {
+  const s = new Set();
+  for (const ch of (pattern || '')) if ('MTWRF'.includes(ch)) s.add(ch);
+  return s;
+}
+
+function overlaps(days1, s1, e1, days2, s2, e2) {
+  if (s1 === null || s2 === null) return false;
+  if (![...days1].some(d => days2.has(d))) return false;
+  return s1 < e2 && s2 < e1;
+}
+
+function fmtTime(str) {
+  if (!str) return '';
+  return str.replace(':00', '').replace('AM','a').replace('PM','p');
+}
+
+// ── Build rows (one per primary section) ──────────────────────────────────────
+function buildRows(catalog) {
+  const result = [];
+  for (const course of catalog) {
+    if (!course.sections?.length) continue;
+    const primaryComp = course.sections[0]?.componentsRequired?.[0] ?? null;
+    const primaries = primaryComp
+      ? course.sections.filter(s => s.component === primaryComp)
+      : [course.sections[0]];
+
+    for (const sec of primaries) {
+      const m = sec.meetings?.[0] || {};
+      const days   = parseDays(m.days);
+      const tStart = parseTime(m.timeStart);
+      const tEnd   = parseTime(m.timeEnd);
+      const req = sec.componentsRequired || [];
+      const opt = (sec.componentsOptional || []).map(c => `(${c})`);
+      result.push({
+        course,
+        section:    sec,
+        courseId:   course.courseId,
+        subject:    course.subject,
+        catalogNbr: course.catalogNbr,
+        sectionCode:sec.section,
+        title:      course.titleShort,
+        credits:    course.credits,
+        creditsNum: parseFloat(course.credits) || 0,
+        days:       m.days || '',
+        daySet:     days,
+        timeStart:  m.timeStart || '',
+        timeEnd:    m.timeEnd || '',
+        timeStartMin: tStart,
+        timeEndMin:   tEnd,
+        instructor: (m.instructors || []).at(-1) || '',
+        distrReqs:  course.distrReqs || [],
+        distrKey:   (course.distrReqs || []).join(','),
+        mode:       sec.instructionMode || '',
+        status:     sec.openStatus || '',
+        career:     course.acadCareer || '',
+        college:    course.acadGroup || '',
+        components: [...new Set([...req, ...opt])].join('+'),
+        classNbr:   sec.classNbr,
+      });
+    }
+  }
+  return result;
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const q = filters.search.toLowerCase();
+  filteredRows = rows.filter(row => {
+    if (q) {
+      const hay = `${row.courseId} ${row.title} ${row.course.titleLong||''} ${row.course.description||''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (filters.subjects.size   && !filters.subjects.has(row.subject))  return false;
+    if (filters.careers.size    && !filters.careers.has(row.career))     return false;
+    if (filters.colleges.size   && !filters.colleges.has(row.college))   return false;
+    if (filters.credits.size    && !filters.credits.has(row.credits))    return false;
+    if (filters.modes.size      && !filters.modes.has(row.mode))         return false;
+    if (filters.openOnly        && row.status !== 'O')                   return false;
+
+    if (filters.distrReqs.size) {
+      const has = code => row.distrReqs.includes(code);
+      const ok = filters.distrReqType === 'any'
+        ? [...filters.distrReqs].some(has)
+        : [...filters.distrReqs].every(has);
+      if (!ok) return false;
+    }
+
+    if (filters.excludeDays.size && row.days) {
+      if ([...parseDays(row.days)].some(d => filters.excludeDays.has(d))) return false;
+    }
+
+    if (filters.timeEnabled && row.timeStartMin !== null) {
+      if (row.timeStartMin < filters.notBefore) return false;
+      if (row.timeEndMin   > filters.notAfter)  return false;
+    }
+
+    if (filters.hideConflicts) {
+      for (const mc of myCourses) {
+        for (const mcm of mc.meetings) {
+          if (overlaps(row.daySet, row.timeStartMin, row.timeEndMin,
+                       mcm.days,  mcm.start,         mcm.end)) return false;
+        }
+      }
+    }
+
+    return true;
+  });
+
+  sortRows();
+  renderTable();
+  document.getElementById('result-count').textContent =
+    `${filteredRows.length.toLocaleString()} of ${rows.length.toLocaleString()} sections`;
+}
+
+// ── Sort ──────────────────────────────────────────────────────────────────────
+function sortRows() {
+  filteredRows.sort((a, b) => {
+    let av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortDir;
+    return String(av).localeCompare(String(bv)) * sortDir;
+  });
+}
+
+function setSort(col) {
+  sortDir = sortCol === col ? -sortDir : 1;
+  sortCol = col;
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.classList.toggle('sort-asc',  th.dataset.col === col && sortDir === 1);
+    th.classList.toggle('sort-desc', th.dataset.col === col && sortDir === -1);
+  });
+  sortRows();
+  renderTable();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function statusBadge(s) {
+  if (s === 'O') return '<span class="badge badge-open">Open</span>';
+  if (s === 'C') return '<span class="badge badge-closed">Closed</span>';
+  if (s === 'W') return '<span class="badge badge-wait">Wait</span>';
+  return s ? `<span class="badge">${s}</span>` : '';
+}
+
+function renderTable() {
+  const tbody = document.getElementById('table-body');
+  if (!filteredRows.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
+    return;
+  }
+  const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
+  tbody.innerHTML = filteredRows.map((row, i) => {
+    const isMine = myNbrs.has(row.classNbr);
+    const bg = isMine ? 'bg-red-50' : (i % 2 ? 'bg-gray-50' : '');
+    const time = row.timeStart ? `${fmtTime(row.timeStart)}–${fmtTime(row.timeEnd)}` : 'TBA';
+    const instr = row.instructor ? row.instructor.split(' ').pop() : '—';
+    const badges = row.distrReqs.map(c =>
+      `<span class="badge badge-distr" title="${c}">${c.split('-')[0]}</span>`).join('');
+    return `<tr class="row border-b border-gray-100 ${bg}" onclick="showModal(${i})">
+      <td class="px-3 py-1.5 font-medium" style="color:#B31B1B">${row.courseId}</td>
+      <td class="px-3 py-1.5 text-gray-400">§${row.sectionCode}</td>
+      <td class="px-3 py-1.5 max-w-[200px] truncate" title="${row.title}">${row.title}</td>
+      <td class="px-3 py-1.5 text-right tabular-nums">${row.credits}</td>
+      <td class="px-3 py-1.5 font-mono">${row.days || '—'}</td>
+      <td class="px-3 py-1.5 tabular-nums">${time}</td>
+      <td class="px-3 py-1.5">${instr}</td>
+      <td class="px-3 py-1.5">${badges}</td>
+      <td class="px-3 py-1.5 text-gray-500">${row.mode || '—'}</td>
+      <td class="px-3 py-1.5">${statusBadge(row.status)}</td>
+      <td class="px-3 py-1.5">${row.career}</td>
+      <td class="px-3 py-1.5">${row.college}</td>
+      <td class="px-3 py-1.5 text-gray-400">${row.components}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function showModal(i) {
+  const row = filteredRows[i];
+  const c   = row.course;
+
+  document.getElementById('modal-title').textContent = `${c.courseId} · ${c.titleLong || c.titleShort}`;
+  document.getElementById('modal-meta').textContent =
+    [c.credits + ' cr', c.acadCareer, c.acadGroup, c.gradingBasis].filter(Boolean).join(' · ');
+
+  document.getElementById('modal-badges').innerHTML = [
+    ...(c.distrReqs || []).map((code, j) =>
+      `<span class="badge badge-distr" title="${(c.distrReqDescrs||[])[j]||''}">${code}</span>`),
+    ...(c.explStudies || []).map((code, j) =>
+      `<span class="badge badge-expl" title="${(c.explStudyDescrs||[])[j]||''}">${code}</span>`),
+  ].join('');
+
+  document.getElementById('modal-description').textContent = c.description || '';
+
+  document.getElementById('modal-details').innerHTML = [
+    c.prereqs          && `<div><b>Prereqs:</b> ${c.prereqs}</div>`,
+    c.coreqs           && `<div><b>Coreqs:</b> ${c.coreqs}</div>`,
+    c.crosslistings    && `<div><b>Crosslisted:</b> ${c.crosslistings}</div>`,
+    c.enrollmentPriority && `<div><b>Enrollment priority:</b> ${c.enrollmentPriority}</div>`,
+    c.lastTermsOffered && `<div><b>Last offered:</b> ${c.lastTermsOffered}</div>`,
+    c.whenOffered      && `<div><b>When offered:</b> ${c.whenOffered}</div>`,
+  ].filter(Boolean).join('');
+
+  const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
+  document.getElementById('modal-sections').innerHTML = (c.sections || []).map(sec => {
+    const m    = sec.meetings?.[0] || {};
+    const time = m.timeStart ? `${m.days||''} ${fmtTime(m.timeStart)}–${fmtTime(m.timeEnd)}` : 'TBA';
+    const instr= (m.instructors || []).join(', ') || 'TBA';
+    const isMine = myNbrs.has(sec.classNbr);
+    const btn  = `<button
+      onclick="event.stopPropagation(); addMyCourseBySection(${sec.classNbr}, '${c.courseId}', '${sec.section}')"
+      class="text-xs px-2 py-0.5 rounded border ${isMine
+        ? 'border-gray-200 text-gray-400 cursor-default'
+        : 'border-red-700 text-red-700 hover:bg-red-700 hover:text-white'}"
+      ${isMine ? 'disabled' : ''}>
+      ${isMine ? 'Added ✓' : '+ Add'}</button>`;
+    return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-100 text-xs">
+      <span class="w-10 text-gray-400 shrink-0">${sec.section}</span>
+      <span class="w-8 text-gray-500 shrink-0">${sec.component}</span>
+      <span class="w-36 tabular-nums shrink-0">${time}</span>
+      <span class="flex-1 text-gray-600 truncate">${instr}</span>
+      <span class="shrink-0">${statusBadge(sec.openStatus)}</span>
+      <span class="shrink-0">${btn}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('modal').classList.add('open');
+}
+
+function maybeCloseModal(e) { if (e.target === document.getElementById('modal')) closeModal(); }
+function closeModal()       { document.getElementById('modal').classList.remove('open'); }
+
+function showModalByClassNbr(classNbr) {
+  for (const course of catalog) {
+    if (course.sections?.some(s => s.classNbr === classNbr)) {
+      // Temporarily render the modal directly from the course object
+      const fakeRow = { course, filteredRows };
+      const i = filteredRows.findIndex(r => r.classNbr === classNbr);
+      if (i !== -1) { showModal(i); return; }
+      // Course may be filtered out — build a synthetic filteredRows entry to show it
+      const sec = course.sections.find(s => s.classNbr === classNbr);
+      const saved = filteredRows;
+      const m = sec.meetings?.[0] || {};
+      filteredRows = [{ course, section: sec, classNbr, sectionCode: sec.section,
+        courseId: course.courseId, distrReqs: course.distrReqs || [] }];
+      showModal(0);
+      filteredRows = saved;
+      return;
+    }
+  }
+}
+
+// ── My Courses ────────────────────────────────────────────────────────────────
+function addMyCourseFromInput() {
+  const input = document.getElementById('mc-input');
+  const nbr   = parseInt(input.value.trim());
+  if (!nbr) return;
+  const row = rows.find(r => r.classNbr === nbr);
+  if (!row) { alert(`Class #${nbr} not found.`); return; }
+  addMyCourseBySection(row.classNbr, row.courseId, row.sectionCode);
+  input.value = '';
+}
+
+function addMyCourseBySection(classNbr, courseId, sectionCode) {
+  if (myCourses.find(mc => mc.classNbr === classNbr)) return;
+  // Find the section object in the full catalog
+  let sec = null;
+  for (const course of catalog) {
+    sec = course.sections?.find(s => s.classNbr === classNbr);
+    if (sec) break;
+  }
+  if (!sec) return;
+  const meetings = (sec.meetings || [])
+    .map(m => ({ days: parseDays(m.days), start: parseTime(m.timeStart), end: parseTime(m.timeEnd) }))
+    .filter(m => m.start !== null);
+  myCourses.push({ classNbr, label: `${courseId} §${sectionCode}`, meetings });
+  renderMyCourses();
+  applyFilters();
+}
+
+function removeMyCourse(classNbr) {
+  myCourses = myCourses.filter(mc => mc.classNbr !== classNbr);
+  renderMyCourses();
+  applyFilters();
+}
+
+function renderMyCourses() {
+  const el = document.getElementById('my-courses-list');
+  if (!myCourses.length) {
+    el.innerHTML = '<div class="text-gray-400">None added yet</div>';
+    return;
+  }
+  el.innerHTML = myCourses.map(mc => {
+    const times = mc.meetings.map(m => {
+      const days = [...m.days].join('');
+      const fmt = mins => {
+        const h = Math.floor(mins / 60), min = String(mins % 60).padStart(2, '0');
+        return `${h}:${min}`;
+      };
+      return m.start !== null ? `${days} ${fmt(m.start)}–${fmt(m.end)}` : 'TBA';
+    }).join(', ') || 'TBA';
+    return `<div class="mc-item">
+      <span class="cursor-pointer hover:text-red-800" onclick="showModalByClassNbr(${mc.classNbr})">
+        ${mc.label}<br><span class="text-gray-400">${times}</span>
+      </span>
+      <button onclick="removeMyCourse(${mc.classNbr})" class="text-gray-300 hover:text-red-700 ml-2 text-base leading-none">×</button>
+    </div>`;
+  }).join('');
+}
+
+// ── Populate filter lists ─────────────────────────────────────────────────────
+function makeChecklist(containerId, values, filterKey, labelFn) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = [...values].sort().map(v =>
+    `<label><input type="checkbox" data-filter="${filterKey}" value="${v}"> ${labelFn ? labelFn(v) : v}</label>`
+  ).join('');
+  el.querySelectorAll('input').forEach(cb => cb.addEventListener('change', onCheck));
+}
+
+function populateFilterOptions() {
+  const subjects = [...new Set(rows.map(r => r.subject))];
+  const careers  = [...new Set(rows.map(r => r.career).filter(Boolean))];
+  const colleges = [...new Set(rows.map(r => r.college).filter(Boolean))];
+  const credits  = [...new Set(rows.map(r => r.credits).filter(Boolean))];
+  const modes    = [...new Set(rows.map(r => r.mode).filter(Boolean))];
+
+  // Subjects with live filter
+  function renderSubjects(q = '') {
+    const el = document.getElementById('subject-list');
+    el.innerHTML = subjects.sort().filter(s => !q || s.toLowerCase().includes(q.toLowerCase()))
+      .map(s => `<label><input type="checkbox" data-filter="subjects" value="${s}" ${filters.subjects.has(s)?'checked':''}> ${s}</label>`)
+      .join('');
+    el.querySelectorAll('input').forEach(cb => cb.addEventListener('change', onCheck));
+  }
+  renderSubjects();
+  document.getElementById('subject-search').addEventListener('input', e => renderSubjects(e.target.value));
+
+  makeChecklist('career-list',  careers,  'careers',  null);
+  makeChecklist('college-list', colleges, 'colleges', null);
+  makeChecklist('credits-list', credits.sort((a,b) => parseFloat(a)-parseFloat(b)), 'credits', null);
+  makeChecklist('mode-list',    modes,    'modes',    null);
+
+  // Distribution requirements with counts
+  const distrMap = {};
+  for (const row of rows) {
+    (row.distrReqs || []).forEach((code, i) => {
+      if (!distrMap[code]) distrMap[code] = { descr: (row.course.distrReqDescrs||[])[i]||'', count: 0 };
+      distrMap[code].count++;
+    });
+  }
+  const allDistrs = Object.entries(distrMap).sort((a,b) => a[0].localeCompare(b[0]));
+
+  function renderDistrs(q = '') {
+    const el = document.getElementById('distr-list');
+    el.innerHTML = allDistrs
+      .filter(([code, {descr}]) => !q ||
+        code.toLowerCase().includes(q.toLowerCase()) ||
+        descr.toLowerCase().includes(q.toLowerCase()))
+      .map(([code, {descr, count}]) =>
+        `<label><input type="checkbox" data-filter="distrReqs" value="${code}" ${filters.distrReqs.has(code)?'checked':''}>
+         <span title="${descr}">${code} <span class="text-gray-400">(${count})</span></span></label>`)
+      .join('');
+    el.querySelectorAll('input').forEach(cb => cb.addEventListener('change', onCheck));
+  }
+  renderDistrs();
+  document.getElementById('distr-search').addEventListener('input', e => renderDistrs(e.target.value));
+}
+
+function onCheck(e) {
+  const key = e.target.dataset.filter;
+  e.target.checked ? filters[key].add(e.target.value) : filters[key].delete(e.target.value);
+  applyFilters();
+}
+
+// ── Wire controls ─────────────────────────────────────────────────────────────
+function initControls() {
+  let searchTimer = null;
+  document.getElementById('f-search').addEventListener('input', e => {
+    const val = e.target.value;
+    if (val.length > 0 && val.length < 3) return;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { filters.search = val; applyFilters(); }, 200);
+  });
+  document.getElementById('f-open-only').addEventListener('change', e => { filters.openOnly = e.target.checked; applyFilters(); });
+  document.getElementById('f-hide-conflicts').addEventListener('change', e => { filters.hideConflicts = e.target.checked; applyFilters(); });
+  document.getElementById('f-time-filter').addEventListener('change', e => {
+    filters.timeEnabled = e.target.checked;
+    document.getElementById('time-pickers').classList.toggle('hidden-pickers', !e.target.checked);
+    applyFilters();
+  });
+  document.querySelectorAll('input[name="distr-type"]').forEach(r =>
+    r.addEventListener('change', e => { filters.distrReqType = e.target.value; applyFilters(); }));
+  document.querySelectorAll('[data-day]').forEach(cb =>
+    cb.addEventListener('change', e => {
+      e.target.checked ? filters.excludeDays.add(e.target.dataset.day) : filters.excludeDays.delete(e.target.dataset.day);
+      applyFilters();
+    }));
+  document.getElementById('f-not-before').addEventListener('change', e => {
+    const [h,m] = e.target.value.split(':').map(Number); filters.notBefore = h*60+m; applyFilters();
+  });
+  document.getElementById('f-not-after').addEventListener('change', e => {
+    const [h,m] = e.target.value.split(':').map(Number); filters.notAfter = h*60+m; applyFilters();
+  });
+  document.querySelectorAll('th[data-col]').forEach(th =>
+    th.addEventListener('click', () => setSort(th.dataset.col)));
+  document.querySelectorAll('.filter-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => toggle.closest('.filter-section').classList.toggle('collapsed'));
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  document.getElementById('table-body').innerHTML =
+    '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
+  try {
+    catalog = await fetch('data/FA26/catalog.json').then(r => r.json());
+  } catch(e) {
+    document.getElementById('table-body').innerHTML =
+      '<tr><td colspan="13" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
+    return;
+  }
+  rows = buildRows(catalog);
+  renderMyCourses();
+  populateFilterOptions();
+  initControls();
+  applyFilters();
+}
+
+init();
+</script>
+</body>
+</html>
