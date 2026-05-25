@@ -25,6 +25,8 @@
     .filter-label { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; }
     .filter-toggle { display:flex; justify-content:space-between; align-items:center; cursor:pointer; user-select:none; margin-bottom:5px; }
     .filter-toggle:hover .filter-label { color:#6b7280; }
+    .filter-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#B31B1B; margin-left:5px; opacity:0; transition:opacity 0.15s; flex-shrink:0; }
+    .filter-dot.active { opacity:1; }
     .chevron { font-size:0.6rem; color:#d1d5db; transition:transform 0.15s; }
     .filter-section.collapsed .chevron { transform:rotate(-90deg); }
     .filter-body { display:block; }
@@ -64,7 +66,7 @@
 
     <!-- Search (always visible, no toggle) -->
     <div class="filter-section">
-      <div class="filter-label mb-1">Search</div>
+      <div class="filter-label mb-1">Search<span class="filter-dot" id="dot-search"></span></div>
       <div class="relative">
         <input id="f-search" type="text" placeholder="Course code or title…"
           class="w-full border border-gray-300 rounded px-2 py-1.5 pr-6 text-xs focus:outline-none focus:border-red-700">
@@ -77,7 +79,7 @@
     <!-- Schedule (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Schedule</div>
+        <div class="filter-label">Schedule<span class="filter-dot" id="dot-schedule"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -113,7 +115,7 @@
     <!-- Subject (expanded by default) -->
     <div class="filter-section">
       <div class="filter-toggle">
-        <div class="filter-label">Subject</div>
+        <div class="filter-label">Subject<span class="filter-dot" id="dot-subject"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -127,7 +129,7 @@
     <!-- Requirements (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Requirements</div>
+        <div class="filter-label">Requirements<span class="filter-dot" id="dot-req"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -137,7 +139,7 @@
 
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Distribution Req.</div>
+        <div class="filter-label">Distribution Req.<span class="filter-dot" id="dot-distr"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -158,7 +160,7 @@
     <!-- Career (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Career</div>
+        <div class="filter-label">Career<span class="filter-dot" id="dot-career"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -169,7 +171,7 @@
     <!-- College (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">College</div>
+        <div class="filter-label">College<span class="filter-dot" id="dot-college"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -180,7 +182,7 @@
     <!-- Credits (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Credits</div>
+        <div class="filter-label">Credits<span class="filter-dot" id="dot-credits"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -191,7 +193,7 @@
     <!-- Mode (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Instruction Mode</div>
+        <div class="filter-label">Instruction Mode<span class="filter-dot" id="dot-mode"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -202,7 +204,7 @@
     <!-- Location (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Location</div>
+        <div class="filter-label">Location<span class="filter-dot" id="dot-location"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -213,7 +215,7 @@
     <!-- Status (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
-        <div class="filter-label">Status</div>
+        <div class="filter-label">Status<span class="filter-dot" id="dot-status"></span></div>
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
@@ -512,6 +514,22 @@ function applyFilters() {
   document.getElementById('result-count').style.display = 'inline';
   document.getElementById('result-count').textContent =
     `${filteredRows.length.toLocaleString()} of ${rows.length.toLocaleString()} courses`;
+  updateFilterDots();
+}
+
+function updateFilterDots() {
+  const dot = (id, active) => document.getElementById(id)?.classList.toggle('active', active);
+  dot('dot-search',   filters.search !== '');
+  dot('dot-schedule', filters.excludeDays.size > 0 || filters.timeEnabled || filters.hideConflicts);
+  dot('dot-subject',  filters.subjects.size > 0);
+  dot('dot-req',      filters.requirements.size > 0);
+  dot('dot-distr',    filters.distrReqs.size > 0);
+  dot('dot-career',   filters.careers.size > 0);
+  dot('dot-college',  filters.colleges.size > 0);
+  dot('dot-credits',  filters.credits.size > 0);
+  dot('dot-mode',     filters.modes.size > 0);
+  dot('dot-location', filters.locations.size > 0);
+  dot('dot-status',   filters.openOnly);
 }
 
 // ── Sort ──────────────────────────────────────────────────────────────────────
@@ -831,7 +849,7 @@ function populateFilterOptions() {
 
   makeChecklist('career-list',  careers,  'careers',  null);
   makeChecklist('college-list', colleges, 'colleges', null);
-  makeChecklist('credits-list', credits.sort((a,b) => parseFloat(a)-parseFloat(b)), 'credits', null);
+  makeChecklist('credits-list', credits.sort((a,b) => parseFloat(a)-parseFloat(b)), 'credits', null, true);
   makeChecklist('mode-list',     modes,     'modes',     null);
   makeChecklist('location-list', locations, 'locations', null, true);
 
