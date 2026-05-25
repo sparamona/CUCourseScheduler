@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import json
+import datetime
 from pathlib import Path
 
 
@@ -110,7 +111,11 @@ def preprocess(roster: str) -> None:
             all_courses.append(flatten_course(c))
 
     out_file = data_dir / "catalog.json"
-    out_file.write_text(json.dumps(all_courses), encoding="utf-8")
+    out_data = {
+        "lastUpdated": datetime.date.today().isoformat(),
+        "courses": all_courses
+    }
+    out_file.write_text(json.dumps(out_data), encoding="utf-8")
 
     size_mb = out_file.stat().st_size / 1_000_000
     print(f"Wrote {len(all_courses)} courses to {out_file} ({size_mb:.1f} MB)")
