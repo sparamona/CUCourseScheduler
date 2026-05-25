@@ -345,6 +345,32 @@
 
 </div><!-- end outer flex col -->
 
+<!-- Prereq filter warning dialog -->
+<div id="prereq-warn" class="modal-overlay" onclick="cancelPrereqFilter()">
+  <div class="modal-box" style="max-width:440px" onclick="event.stopPropagation()">
+    <div class="flex justify-between items-start mb-3">
+      <h2 class="text-base font-bold">Prereq filter — heads up</h2>
+      <button onclick="cancelPrereqFilter()" class="text-gray-300 hover:text-gray-600 text-2xl leading-none ml-4">&times;</button>
+    </div>
+    <p class="text-sm text-gray-700 mb-3 leading-relaxed">
+      Prereq checking is automated and imperfect. Many requirements are written in natural language,
+      contain conditions, or reference things that can't be verified from course codes alone.
+    </p>
+    <div class="text-xs text-gray-600 mb-3 space-y-1">
+      <div><span style="color:#065f46;font-weight:700">✓</span> &nbsp;All recognized code-based prereqs appear met.</div>
+      <div><span style="color:#92400e">⚠</span> &nbsp;Prereq has unverifiable components — check the course detail.</div>
+      <div><span style="color:#991b1b;font-weight:700">✗</span> &nbsp;A recognized prereq code appears missing — but verify before ruling a course out.</div>
+    </div>
+    <p class="text-xs text-gray-400 mb-4">Always review the <em>Prereqs</em> line in each course's detail view before enrolling.</p>
+    <div class="flex justify-end gap-2">
+      <button onclick="cancelPrereqFilter()"
+        class="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100">Cancel</button>
+      <button onclick="confirmPrereqFilter()"
+        class="px-3 py-1.5 text-xs rounded text-white hover:opacity-90" style="background:#B31B1B">Got it — enable filter</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal -->
 <div id="modal" class="modal-overlay" onclick="maybeCloseModal(event)">
   <div class="modal-box">
@@ -791,7 +817,21 @@ function renderModalSections(c) {
 
 function maybeCloseModal(e) { if (e.target === document.getElementById('modal')) closeModal(); }
 function closeModal()       { document.getElementById('modal').classList.remove('open'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+function confirmPrereqFilter() {
+  document.getElementById('prereq-warn').classList.remove('open');
+  document.getElementById('f-hide-unmet-prereqs').checked = true;
+  filters.hideUnmetPrereqs = true;
+  triggerFilter();
+}
+function cancelPrereqFilter() {
+  document.getElementById('prereq-warn').classList.remove('open');
+  document.getElementById('f-hide-unmet-prereqs').checked = false;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); cancelPrereqFilter(); }
+});
 
 function showModalByClassNbr(classNbr) {
   for (const course of catalog) {
@@ -1024,7 +1064,15 @@ function initControls() {
   });
   document.getElementById('f-open-only').addEventListener('change', e => { filters.openOnly = e.target.checked; triggerFilter(); });
   document.getElementById('f-hide-conflicts').addEventListener('change', e => { filters.hideConflicts = e.target.checked; triggerFilter(); });
-  document.getElementById('f-hide-unmet-prereqs').addEventListener('change', e => { filters.hideUnmetPrereqs = e.target.checked; triggerFilter(); });
+  document.getElementById('f-hide-unmet-prereqs').addEventListener('change', e => {
+    if (e.target.checked) {
+      e.target.checked = false; // hold off until user confirms
+      document.getElementById('prereq-warn').classList.add('open');
+    } else {
+      filters.hideUnmetPrereqs = false;
+      triggerFilter();
+    }
+  });
   document.getElementById('f-time-filter').addEventListener('change', e => {
     filters.timeEnabled = e.target.checked;
     document.getElementById('time-pickers').classList.toggle('hidden-pickers', !e.target.checked);
