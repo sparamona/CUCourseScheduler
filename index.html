@@ -218,7 +218,7 @@
       <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm">
         <tr>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="courseId">Course</th>
-          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="sectionCode">§</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="openCount">Open</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="title">Title</th>
           <th class="px-3 py-2 text-right border-b border-gray-200" data-col="creditsNum">Cr</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="days">Days</th>
@@ -226,7 +226,6 @@
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="instructor">Instructor</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="distrKey">Dist. Req.</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="mode">Mode</th>
-          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="status">Status</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="career">Career</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="college">College</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="components">Comp.</th>
@@ -350,7 +349,7 @@ function fmtTime(str) {
   return str.replace(':00', '').replace('AM','a').replace('PM','p');
 }
 
-// ── Build rows (one per primary section) ──────────────────────────────────────
+// ── Build rows (one per course) ───────────────────────────────────────────────
 function buildRows(catalog) {
   const result = [];
   for (const course of catalog) {
@@ -360,41 +359,46 @@ function buildRows(catalog) {
       ? course.sections.filter(s => s.component === primaryComp)
       : [course.sections[0]];
 
-    for (const sec of primaries) {
-      const m = sec.meetings?.[0] || {};
-      const days   = parseDays(m.days);
-      const tStart = parseTime(m.timeStart);
-      const tEnd   = parseTime(m.timeEnd);
-      const req = sec.componentsRequired || [];
-      const opt = (sec.componentsOptional || []).map(c => `(${c})`);
-      result.push({
-        course,
-        section:    sec,
-        courseId:   course.courseId,
-        subject:    course.subject,
-        catalogNbr: course.catalogNbr,
-        sectionCode:sec.section,
-        title:      course.titleShort,
-        credits:    course.credits,
-        creditsNum: parseFloat(course.credits) || 0,
-        days:       m.days || '',
-        daySet:     days,
-        timeStart:  m.timeStart || '',
-        timeEnd:    m.timeEnd || '',
-        timeStartMin: tStart,
-        timeEndMin:   tEnd,
-        instructor: (m.instructors || []).at(-1) || '',
-        distrReqs:  course.distrReqs || [],
-        distrKey:   (course.distrReqs || []).join(','),
-        mode:       sec.instructionMode || '',
-        location:   sec.location || '',
-        status:     sec.openStatus || '',
-        career:     course.acadCareer || '',
-        college:    course.acadGroup || '',
-        components: [...new Set([...req, ...opt])].join('+'),
-        classNbr:   sec.classNbr,
-      });
-    }
+    // Representative: first primary with a scheduled time, else first primary
+    const rep = primaries.find(s => s.meetings?.[0]?.timeStart) || primaries[0];
+    const m = rep.meetings?.[0] || {};
+    const days   = parseDays(m.days);
+    const tStart = parseTime(m.timeStart);
+    const tEnd   = parseTime(m.timeEnd);
+    const req = rep.componentsRequired || [];
+    const opt = (rep.componentsOptional || []).map(c => `(${c})`);
+    const openCount = primaries.filter(s => s.openStatus === 'O').length;
+
+    result.push({
+      course,
+      section:    rep,
+      primaries,
+      courseId:   course.courseId,
+      subject:    course.subject,
+      catalogNbr: course.catalogNbr,
+      sectionCode:rep.section,
+      title:      course.titleShort,
+      credits:    course.credits,
+      creditsNum: parseFloat(course.credits) || 0,
+      days:       m.days || '',
+      daySet:     days,
+      timeStart:  m.timeStart || '',
+      timeEnd:    m.timeEnd || '',
+      timeStartMin: tStart,
+      timeEndMin:   tEnd,
+      instructor: (m.instructors || []).at(-1) || '',
+      distrReqs:  course.distrReqs || [],
+      distrKey:   (course.distrReqs || []).join(','),
+      mode:       rep.instructionMode || '',
+      location:   rep.location || '',
+      status:     rep.openStatus || '',
+      career:     course.acadCareer || '',
+      college:    course.acadGroup || '',
+      components: [...new Set([...req, ...opt])].join('+'),
+      classNbr:   rep.classNbr,
+      openCount,
+      totalCount: primaries.length,
+    });
   }
   return result;
 }
@@ -414,6 +418,21 @@ function triggerFilter() {
 }
 
 // ── Filter ────────────────────────────────────────────────────────────────────
+function primaryPassesFilters(sec) {
+  if (filters.modes.size     && !filters.modes.has(sec.instructionMode || ''))  return false;
+  if (filters.locations.size && !filters.locations.has(sec.location || ''))     return false;
+  if (filters.openOnly       && sec.openStatus !== 'O')                         return false;
+  const m = sec.meetings?.[0] || {};
+  if (filters.excludeDays.size && m.days) {
+    if ([...parseDays(m.days)].some(d => filters.excludeDays.has(d))) return false;
+  }
+  if (filters.timeEnabled) {
+    const s = parseTime(m.timeStart), e = parseTime(m.timeEnd);
+    if (s !== null && (s < filters.notBefore || e > filters.notAfter)) return false;
+  }
+  return true;
+}
+
 function applyFilters() {
   const q = filters.search.toLowerCase();
   filteredRows = rows.filter(row => {
@@ -421,13 +440,10 @@ function applyFilters() {
       const hay = `${row.courseId} ${row.title} ${row.course.titleLong||''} ${row.course.description||''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
-    if (filters.subjects.size   && !filters.subjects.has(row.subject))  return false;
-    if (filters.careers.size    && !filters.careers.has(row.career))     return false;
-    if (filters.colleges.size   && !filters.colleges.has(row.college))   return false;
-    if (filters.credits.size    && !filters.credits.has(row.credits))    return false;
-    if (filters.modes.size      && !filters.modes.has(row.mode))         return false;
-    if (filters.locations.size  && !filters.locations.has(row.location)) return false;
-    if (filters.openOnly        && row.status !== 'O')                   return false;
+    if (filters.subjects.size && !filters.subjects.has(row.subject))  return false;
+    if (filters.careers.size  && !filters.careers.has(row.career))    return false;
+    if (filters.colleges.size && !filters.colleges.has(row.college))  return false;
+    if (filters.credits.size  && !filters.credits.has(row.credits))   return false;
 
     if (filters.distrReqs.size) {
       const has = code => row.distrReqs.includes(code);
@@ -437,21 +453,29 @@ function applyFilters() {
       if (!ok) return false;
     }
 
-    if (filters.excludeDays.size && row.days) {
-      if ([...parseDays(row.days)].some(d => filters.excludeDays.has(d))) return false;
-    }
-
-    if (filters.timeEnabled && row.timeStartMin !== null) {
-      if (row.timeStartMin < filters.notBefore) return false;
-      if (row.timeEndMin   > filters.notAfter)  return false;
-    }
+    // Section-level filters: at least one primary section must satisfy all simultaneously
+    if (!row.primaries.some(primaryPassesFilters)) return false;
 
     if (filters.hideConflicts) {
-      for (const mc of myCourses) {
-        for (const mcm of mc.meetings) {
-          if (overlaps(row.daySet, row.timeStartMin, row.timeEndMin,
-                       mcm.days,  mcm.start,         mcm.end)) return false;
+      const requiredSecondaryComps = (row.course.sections[0]?.componentsRequired || []).slice(1);
+
+      const isFree = sec => {
+        for (const m of (sec.meetings || [])) {
+          const days = parseDays(m.days || '');
+          const s = parseTime(m.timeStart), e = parseTime(m.timeEnd);
+          if (s === null) continue;
+          for (const mc of myCourses)
+            for (const mcm of mc.meetings)
+              if (overlaps(days, s, e, mcm.days, mcm.start, mcm.end)) return false;
         }
+        return true;
+      };
+
+      if (!row.primaries.some(isFree)) return false;
+
+      for (const compType of requiredSecondaryComps) {
+        const secs = row.course.sections.filter(s => s.component === compType);
+        if (secs.length && !secs.some(isFree)) return false;
       }
     }
 
@@ -463,7 +487,7 @@ function applyFilters() {
   document.getElementById('filter-indicator').style.display = 'none';
   document.getElementById('result-count').style.display = 'inline';
   document.getElementById('result-count').textContent =
-    `${filteredRows.length.toLocaleString()} of ${rows.length.toLocaleString()} sections`;
+    `${filteredRows.length.toLocaleString()} of ${rows.length.toLocaleString()} courses`;
 }
 
 // ── Sort ──────────────────────────────────────────────────────────────────────
@@ -497,20 +521,23 @@ function statusBadge(s) {
 function renderTable() {
   const tbody = document.getElementById('table-body');
   if (!filteredRows.length) {
-    tbody.innerHTML = '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
     return;
   }
   const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
   tbody.innerHTML = filteredRows.map((row, i) => {
-    const isMine = myNbrs.has(row.classNbr);
+    const isMine = row.course.sections.some(s => myNbrs.has(s.classNbr));
     const bg = isMine ? 'bg-red-50' : (i % 2 ? 'bg-gray-50' : '');
     const time = row.timeStart ? `${fmtTime(row.timeStart)}–${fmtTime(row.timeEnd)}` : 'TBA';
     const instr = row.instructor ? row.instructor.split(' ').pop() : '—';
     const badges = row.distrReqs.map(c =>
       `<span class="badge badge-distr" title="${c}">${c.split('-')[0]}</span>`).join('');
-    return `<tr class="row border-b border-gray-100 ${bg}" data-row-idx="${i}" onclick="showModal(${i})">
+    const openLabel = row.totalCount > 1
+      ? `<span class="${row.openCount ? 'text-green-700' : 'text-red-700'}">${row.openCount}</span><span class="text-gray-400">/${row.totalCount}</span>`
+      : (row.openCount ? '<span class="text-green-700">Open</span>' : '<span class="text-red-700">Closed</span>');
+    return `<tr class="row border-b border-gray-100 ${bg}" onclick="showModal(${i})">
       <td class="px-3 py-1.5 font-medium" style="color:#B31B1B">${row.courseId}</td>
-      <td class="px-3 py-1.5 text-gray-400">§${row.sectionCode}</td>
+      <td class="px-3 py-1.5 tabular-nums text-xs">${openLabel}</td>
       <td class="px-3 py-1.5 max-w-[200px] truncate" title="${row.title}">${row.title}</td>
       <td class="px-3 py-1.5 text-right tabular-nums">${row.credits}</td>
       <td class="px-3 py-1.5 font-mono">${row.days || '—'}</td>
@@ -518,7 +545,6 @@ function renderTable() {
       <td class="px-3 py-1.5">${instr}</td>
       <td class="px-3 py-1.5">${badges}</td>
       <td class="px-3 py-1.5 text-gray-500">${row.mode || '—'}</td>
-      <td class="px-3 py-1.5">${statusBadge(row.status)}</td>
       <td class="px-3 py-1.5">${row.career}</td>
       <td class="px-3 py-1.5">${row.college}</td>
       <td class="px-3 py-1.5 text-gray-400">${row.components}</td>
@@ -562,12 +588,21 @@ let modalCourse = null;
 function renderModalSections(c) {
   modalCourse = c;
   const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
-  document.getElementById('modal-sections').innerHTML = (c.sections || []).map(sec => {
-    const m    = sec.meetings?.[0] || {};
-    const time = m.timeStart ? `${m.days||''} ${fmtTime(m.timeStart)}–${fmtTime(m.timeEnd)}` : 'TBA';
-    const instr= (m.instructors || []).join(', ') || 'TBA';
+  const requiredComps = c.sections[0]?.componentsRequired || [];
+  const optionalComps = c.sections[0]?.componentsOptional || [];
+
+  const groups = {};
+  for (const sec of (c.sections || [])) {
+    if (!groups[sec.component]) groups[sec.component] = [];
+    groups[sec.component].push(sec);
+  }
+
+  function renderSec(sec) {
+    const m     = sec.meetings?.[0] || {};
+    const time  = m.timeStart ? `${m.days||''} ${fmtTime(m.timeStart)}–${fmtTime(m.timeEnd)}` : 'TBA';
+    const instr = (m.instructors || []).join(', ') || 'TBA';
     const isMine = myNbrs.has(sec.classNbr);
-    const btn  = `<button
+    const btn = `<button
       onclick="event.stopPropagation(); addMyCourseBySection(${sec.classNbr}, '${c.courseId}', '${sec.section}')"
       class="text-xs px-2 py-0.5 rounded border ${isMine
         ? 'border-gray-200 text-gray-400 cursor-default'
@@ -576,13 +611,29 @@ function renderModalSections(c) {
       ${isMine ? 'Added ✓' : '+ Add'}</button>`;
     return `<div class="flex items-center gap-2 py-1.5 border-b border-gray-100 text-xs">
       <span class="w-10 text-gray-400 shrink-0">${sec.section}</span>
-      <span class="w-8 text-gray-500 shrink-0">${sec.component}</span>
       <span class="w-36 tabular-nums shrink-0">${time}</span>
       <span class="flex-1 text-gray-600 truncate">${instr}</span>
       <span class="shrink-0">${statusBadge(sec.openStatus)}</span>
       <span class="shrink-0">${btn}</span>
     </div>`;
-  }).join('');
+  }
+
+  function renderGroup(comp, label, labelClass) {
+    const secs = groups[comp];
+    if (!secs) return '';
+    return `<div class="mb-4">
+      <div class="text-xs font-semibold uppercase tracking-wide mb-1 ${labelClass}">${label} · ${comp}</div>
+      ${secs.map(renderSec).join('')}
+    </div>`;
+  }
+
+  const covered = new Set([...requiredComps, ...optionalComps]);
+  let html = requiredComps.map(c => renderGroup(c, 'Required', 'text-gray-700')).join('');
+  html    += optionalComps.map(c => renderGroup(c, 'Optional', 'text-gray-400')).join('');
+  for (const comp of Object.keys(groups))
+    if (!covered.has(comp)) html += renderGroup(comp, 'Other', 'text-gray-400');
+
+  document.getElementById('modal-sections').innerHTML = html;
 }
 
 function maybeCloseModal(e) { if (e.target === document.getElementById('modal')) closeModal(); }
@@ -593,14 +644,11 @@ function showModalByClassNbr(classNbr) {
     if (course.sections?.some(s => s.classNbr === classNbr)) {
       // Temporarily render the modal directly from the course object
       const fakeRow = { course, filteredRows };
-      const i = filteredRows.findIndex(r => r.classNbr === classNbr);
+      const i = filteredRows.findIndex(r => r.course === course);
       if (i !== -1) { showModal(i); return; }
       // Course may be filtered out — build a synthetic filteredRows entry to show it
-      const sec = course.sections.find(s => s.classNbr === classNbr);
       const saved = filteredRows;
-      const m = sec.meetings?.[0] || {};
-      filteredRows = [{ course, section: sec, classNbr, sectionCode: sec.section,
-        courseId: course.courseId, distrReqs: course.distrReqs || [] }];
+      filteredRows = [{ course, classNbr, courseId: course.courseId, distrReqs: course.distrReqs || [] }];
       showModal(0);
       filteredRows = saved;
       return;
@@ -613,9 +661,13 @@ function addMyCourseFromInput() {
   const input = document.getElementById('mc-input');
   const nbr   = parseInt(input.value.trim());
   if (!nbr) return;
-  const row = rows.find(r => r.classNbr === nbr);
-  if (!row) { alert(`Class #${nbr} not found.`); return; }
-  addMyCourseBySection(row.classNbr, row.courseId, row.sectionCode);
+  let found = null;
+  for (const course of catalog) {
+    const sec = course.sections?.find(s => s.classNbr === nbr);
+    if (sec) { found = { course, sec }; break; }
+  }
+  if (!found) { alert(`Class #${nbr} not found.`); return; }
+  addMyCourseBySection(found.sec.classNbr, found.course.courseId, found.sec.section);
   input.value = '';
 }
 
@@ -702,8 +754,8 @@ function populateFilterOptions() {
   const careers  = [...new Set(rows.map(r => r.career).filter(Boolean))];
   const colleges = [...new Set(rows.map(r => r.college).filter(Boolean))];
   const credits  = [...new Set(rows.map(r => r.credits).filter(Boolean))];
-  const modes     = [...new Set(rows.map(r => r.mode).filter(Boolean))];
-  const _locs = [...new Set(rows.map(r => r.location).filter(Boolean))];
+  const modes     = [...new Set(rows.flatMap(r => r.primaries.map(s => s.instructionMode || '').filter(Boolean)))];
+  const _locs     = [...new Set(rows.flatMap(r => r.primaries.map(s => s.location || '').filter(Boolean)))];
   const locations = ['Ithaca, NY (Main Campus)', ..._locs.filter(l => l !== 'Ithaca, NY (Main Campus)').sort()];
 
   // Subjects with live filter
@@ -804,14 +856,6 @@ function initControls() {
     toggle.addEventListener('click', () => toggle.closest('.filter-section').classList.toggle('collapsed'));
   });
 
-  const tbody = document.getElementById('table-body');
-  tbody.addEventListener('mouseover', e => {
-    const tr = e.target.closest('tr[data-row-idx]');
-    if (!tr) return;
-    const row = filteredRows[parseInt(tr.dataset.rowIdx)];
-    if (row && row !== previewRow) setPreview(row);
-  });
-  tbody.addEventListener('mouseleave', () => clearPreview());
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
@@ -910,12 +954,12 @@ function clearPreview()   { previewRow = null; renderCalendar(); }
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   document.getElementById('table-body').innerHTML =
-    '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
+    '<tr><td colspan="12" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
   try {
     catalog = await fetch('data/FA26/catalog.json').then(r => r.json());
   } catch(e) {
     document.getElementById('table-body').innerHTML =
-      '<tr><td colspan="13" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
+      '<tr><td colspan="12" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
     return;
   }
   rows = buildRows(catalog);
