@@ -35,6 +35,8 @@
     .checklist { max-height:140px; overflow-y:auto; }
     .checklist label { display:flex; align-items:center; gap:5px; font-size:0.75rem; padding:2px 0; cursor:pointer; }
     .checklist label:hover { color:#B31B1B; }
+    .sel-all { font-size:0.6rem; color:#d1d5db; cursor:pointer; user-select:none; }
+    .sel-all:hover { color:#B31B1B; }
     .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:50; overflow-y:auto; padding:2rem 1rem; }
     .modal-overlay.open { display:block; }
     .modal-box { background:white; border-radius:8px; width:680px; max-width:100%; margin:0 auto; padding:24px; }
@@ -122,8 +124,12 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
-        <input id="subject-search" type="text" placeholder="Filter…"
-          class="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-1 focus:outline-none focus:border-red-700">
+        <div class="flex items-center gap-1 mb-1">
+          <input id="subject-search" type="text" placeholder="Filter…"
+            class="flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-red-700">
+          <span class="sel-all" onclick="selectAll('subject-list','subjects')">all</span>
+          <span class="sel-all" onclick="clearAll('subject-list','subjects')">none</span>
+        </div>
         <div id="subject-list" class="checklist"></div>
       </div>
     </div>
@@ -136,6 +142,10 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
+        <div class="flex justify-end gap-2 mb-0.5">
+          <span class="sel-all" onclick="selectAll('req-list','requirements')">all</span>
+          <span class="sel-all" onclick="clearAll('req-list','requirements')">none</span>
+        </div>
         <div id="req-list" class="checklist"></div>
       </div>
     </div>
@@ -154,8 +164,12 @@
             <input type="radio" name="distr-type" value="all"> All
           </label>
         </div>
-        <input id="distr-search" type="text" placeholder="Filter…"
-          class="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-1 focus:outline-none focus:border-red-700">
+        <div class="flex items-center gap-1 mb-1">
+          <input id="distr-search" type="text" placeholder="Filter…"
+            class="flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:border-red-700">
+          <span class="sel-all" onclick="selectAll('distr-list','distrReqs')">all</span>
+          <span class="sel-all" onclick="clearAll('distr-list','distrReqs')">none</span>
+        </div>
         <div id="distr-list" class="checklist"></div>
       </div>
     </div>
@@ -167,6 +181,10 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
+        <div class="flex justify-end gap-2 mb-0.5">
+          <span class="sel-all" onclick="selectAll('career-list','careers')">all</span>
+          <span class="sel-all" onclick="clearAll('career-list','careers')">none</span>
+        </div>
         <div id="career-list" class="checklist"></div>
       </div>
     </div>
@@ -178,6 +196,10 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
+        <div class="flex justify-end gap-2 mb-0.5">
+          <span class="sel-all" onclick="selectAll('college-list','colleges')">all</span>
+          <span class="sel-all" onclick="clearAll('college-list','colleges')">none</span>
+        </div>
         <div id="college-list" class="checklist"></div>
       </div>
     </div>
@@ -189,6 +211,10 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
+        <div class="flex justify-end gap-2 mb-0.5">
+          <span class="sel-all" onclick="selectAll('credits-list','credits')">all</span>
+          <span class="sel-all" onclick="clearAll('credits-list','credits')">none</span>
+        </div>
         <div id="credits-list" class="checklist"></div>
       </div>
     </div>
@@ -200,6 +226,10 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
+        <div class="flex justify-end gap-2 mb-0.5">
+          <span class="sel-all" onclick="selectAll('mode-list','modes')">all</span>
+          <span class="sel-all" onclick="clearAll('mode-list','modes')">none</span>
+        </div>
         <div id="mode-list" class="checklist"></div>
       </div>
     </div>
@@ -211,6 +241,10 @@
         <span class="chevron">▼</span>
       </div>
       <div class="filter-body">
+        <div class="flex justify-end gap-2 mb-0.5">
+          <span class="sel-all" onclick="selectAll('location-list','locations')">all</span>
+          <span class="sel-all" onclick="clearAll('location-list','locations')">none</span>
+        </div>
         <div id="location-list" class="checklist"></div>
       </div>
     </div>
@@ -865,6 +899,19 @@ function renderPastCourses() {
 }
 
 // ── Populate filter lists ─────────────────────────────────────────────────────
+function selectAll(containerId, filterKey) {
+  document.getElementById(containerId).querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.checked = true;
+    filters[filterKey].add(cb.value);
+  });
+  triggerFilter();
+}
+function clearAll(containerId, filterKey) {
+  document.getElementById(containerId).querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  filters[filterKey].clear();
+  triggerFilter();
+}
+
 function makeChecklist(containerId, values, filterKey, labelFn, presorted = false) {
   const el = document.getElementById(containerId);
   const set = filters[filterKey];
