@@ -261,10 +261,13 @@
 </div><!-- end inner flex row -->
 
 <!-- Calendar panel -->
-<div id="cal-panel" class="flex-shrink-0 bg-white border-t border-gray-200" style="display:none; height:280px;">
-  <div class="flex h-full">
+<div id="cal-panel" class="flex-shrink-0 bg-white border-t border-gray-200" style="display:none; height:380px;">
+  <div class="flex w-full h-full">
     <!-- Time axis -->
-    <div class="w-10 flex-shrink-0 border-r border-gray-100 relative bg-gray-50" id="cal-time-col"></div>
+    <div class="w-10 flex-shrink-0 border-r border-gray-100 flex flex-col bg-gray-50">
+      <div class="cal-day-hdr">&nbsp;</div>
+      <div class="cal-day-body" id="cal-time-col"></div>
+    </div>
     <!-- Day columns -->
     <div class="flex flex-1 min-w-0">
       <div class="flex-1 flex flex-col border-r border-gray-100 min-w-0">
@@ -1021,7 +1024,7 @@ function buildTimeAxis() {
 
 function toggleCalendar() {
   calVisible = !calVisible;
-  document.getElementById('cal-panel').style.display = calVisible ? 'flex' : 'none';
+  document.getElementById('cal-panel').style.display = calVisible ? 'block' : 'none';
   document.getElementById('cal-btn').textContent = calVisible ? 'Hide Calendar' : 'Calendar';
   if (calVisible) { buildTimeAxis(); renderCalendar(); }
 }
