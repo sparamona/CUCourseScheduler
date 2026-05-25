@@ -13,6 +13,8 @@
     .badge-wait   { background:#fef3c7; color:#92400e; }
     .badge-distr  { background:#dbeafe; color:#1e40af; }
     .badge-expl   { background:#dcfce7; color:#166534; }
+    .badge-req    { background:#ede9fe; color:#5b21b6; }
+    .badge-req1   { background:#ffedd5; color:#9a3412; }
     tr.row:hover  { background:#fef2f2 !important; cursor:pointer; }
     th { cursor:pointer; user-select:none; white-space:nowrap; }
     th:hover { background:#e5e7eb; }
@@ -122,6 +124,17 @@
     </div>
 
     <!-- Distribution Requirements (collapsed by default) -->
+    <!-- Requirements (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Requirements</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="req-list" class="checklist"></div>
+      </div>
+    </div>
+
     <div class="filter-section collapsed">
       <div class="filter-toggle">
         <div class="filter-label">Distribution Req.</div>
@@ -226,6 +239,7 @@
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="timeStartMin">Time</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="instructor">Instructor</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="distrKey">Dist. Req.</th>
+          <th class="px-3 py-2 text-left border-b border-gray-200">Req.</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="mode">Mode</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="career">Career</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="college">College</th>
@@ -295,6 +309,7 @@
   </div>
 </div>
 
+<script src="requirements.js"></script>
 <script>
 // ── State ──────────────────────────────────────────────────────────────────────
 let catalog = [];
@@ -304,6 +319,7 @@ let sortCol = 'courseId';
 let sortDir = 1;
 let myCourses = []; // {classNbr, label, meetings:[{days:Set,start:int,end:int}]}
 
+
 const filters = {
   search: '',
   subjects:    new Set(),
@@ -312,6 +328,7 @@ const filters = {
   credits:     new Set(),
   modes:       new Set(),
   locations:   new Set(['Ithaca, NY (Main Campus)']),
+  requirements: new Set(),
   openOnly:    false,
   distrReqs:   new Set(),
   distrReqType:'any',
@@ -400,7 +417,10 @@ function buildRows(catalog) {
       classNbr:   rep.classNbr,
       openCount,
       totalCount: primaries.length,
+      reqMatches: [],  // filled after push
     });
+    const last = result[result.length - 1];
+    last.reqMatches = REQUIREMENTS.filter(r => r.matches(last)).map(r => r.id);
   }
   return result;
 }
@@ -454,6 +474,8 @@ function applyFilters() {
         : [...filters.distrReqs].every(has);
       if (!ok) return false;
     }
+
+    if (filters.requirements.size && !row.reqMatches.some(id => filters.requirements.has(id))) return false;
 
     // Section-level filters: at least one primary section must satisfy all simultaneously
     if (!row.primaries.some(primaryPassesFilters)) return false;
@@ -523,7 +545,7 @@ function statusBadge(s) {
 function renderTable() {
   const tbody = document.getElementById('table-body');
   if (!filteredRows.length) {
-    tbody.innerHTML = '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" class="px-4 py-10 text-center text-gray-400">No results match the current filters.</td></tr>';
     return;
   }
   const myNbrs = new Set(myCourses.map(mc => mc.classNbr));
@@ -547,6 +569,7 @@ function renderTable() {
       <td class="px-3 py-1.5 tabular-nums">${time}</td>
       <td class="px-3 py-1.5">${instr}</td>
       <td class="px-3 py-1.5">${badges}</td>
+      <td class="px-3 py-1.5">${row.reqMatches.map(id => `<span class="badge ${REQ_BY_ID[id].badgeClass}">${REQ_BY_ID[id].label}</span>`).join(' ')}</td>
       <td class="px-3 py-1.5 text-gray-500">${row.mode || '—'}</td>
       <td class="px-3 py-1.5">${row.career}</td>
       <td class="px-3 py-1.5">${row.college}</td>
@@ -800,6 +823,12 @@ function populateFilterOptions() {
   renderSubjects();
   document.getElementById('subject-search').addEventListener('input', e => renderSubjects(e.target.value));
 
+  const reqEl = document.getElementById('req-list');
+  reqEl.innerHTML = REQUIREMENTS.map(r =>
+    `<label><input type="checkbox" data-filter="requirements" value="${r.id}"${filters.requirements.has(r.id) ? ' checked' : ''}> <span class="badge ${r.badgeClass}">${r.label}</span></label>`
+  ).join('');
+  reqEl.querySelectorAll('input').forEach(cb => cb.addEventListener('change', onCheck));
+
   makeChecklist('career-list',  careers,  'careers',  null);
   makeChecklist('college-list', colleges, 'colleges', null);
   makeChecklist('credits-list', credits.sort((a,b) => parseFloat(a)-parseFloat(b)), 'credits', null);
@@ -985,12 +1014,12 @@ function clearPreview()   { previewRow = null; renderCalendar(); }
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   document.getElementById('table-body').innerHTML =
-    '<tr><td colspan="13" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
+    '<tr><td colspan="14" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
   try {
     catalog = await fetch('data/FA26/catalog.json').then(r => r.json());
   } catch(e) {
     document.getElementById('table-body').innerHTML =
-      '<tr><td colspan="13" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
+      '<tr><td colspan="14" class="px-4 py-10 text-center text-red-500">Failed to load catalog. Serve this directory with: <code>python -m http.server 8000</code></td></tr>';
     return;
   }
   rows = buildRows(catalog);
