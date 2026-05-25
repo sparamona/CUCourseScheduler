@@ -1,0 +1,28 @@
+{
+  "student": "Adam Sheena",
+  "updated": "2026-05-25",
+  "taken": [
+    "AAP 1100",
+    "ARCH 1101",
+    "ARCH 1102",
+    "ARCH 1501",
+    "ARCH 1611",
+    "ARCH 1612",
+    "ARCH 1801",
+    "ENGRG 1400",
+    "MATH 1110",
+    "MATH 1710",
+    "MUSIC 4615",
+    "PE 1630",
+    "PHIL 1110",
+    "PHYS 1112"
+  ],
+  "enrolled": [
+    "ARCH 2101",
+    "ARCH 2502",
+    "ARCH 2613",
+    "ARCH 2802",
+    "EAS 1600",
+    "PE 1610"
+  ]
+}

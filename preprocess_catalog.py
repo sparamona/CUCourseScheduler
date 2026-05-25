@@ -9,8 +9,20 @@ Usage:
 
 import argparse
 import json
+import re
 import datetime
 from pathlib import Path
+
+_COURSE_CODE = re.compile(r'[A-Z]{2,8}\s+\d{4}')
+_OR_SIGNAL   = re.compile(r'\bor\b|one of|any of|at least one', re.I)
+
+def parse_prereqs(text):
+    if not text:
+        return None
+    codes = _COURSE_CODE.findall(text)
+    if not codes:
+        return None
+    return {'codes': codes, 'logic': 'or' if _OR_SIGNAL.search(text) else 'and'}
 
 
 def flatten_section(sec: dict, meetings: list) -> dict:
@@ -90,6 +102,7 @@ def flatten_course(c: dict) -> dict:
         "explStudies": [a["crseAttrValue"] for a in explore_attrs],
         "explStudyDescrs": [a["descr"] for a in explore_attrs],
         "prereqs": c.get("catalogPrereq", "") or c.get("catalogPrereqCoreq", ""),
+        "prereqParsed": parse_prereqs(c.get("catalogPrereq", "") or c.get("catalogPrereqCoreq", "")),
         "coreqs": c.get("catalogCoreq", ""),
         "crosslistings": c.get("catalogCrosslistings", ""),
         "enrollmentPriority": c.get("catalogEnrollmentPriority", "") or c.get("catalogPermission", ""),
@@ -102,7 +115,7 @@ def flatten_course(c: dict) -> dict:
 
 def preprocess(roster: str) -> None:
     data_dir = Path("data") / roster
-    files = sorted(f for f in data_dir.glob("*.json") if f.stem != "catalog" and f.stem != "distr_reqs")
+    files = sorted(f for f in data_dir.glob("*.json") if f.stem not in ("catalog", "distr_reqs", "adam"))
 
     all_courses = []
     for f in files:

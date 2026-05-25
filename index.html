@@ -225,6 +225,9 @@
         <label class="flex items-center gap-2 text-xs cursor-pointer">
           <input type="checkbox" id="f-open-only"> Open sections only
         </label>
+        <label class="flex items-center gap-2 text-xs cursor-pointer mt-1">
+          <input type="checkbox" id="f-hide-unmet-prereqs"> Hide courses with unmet prereqs
+        </label>
       </div>
     </div>
 
@@ -247,7 +250,7 @@
           <th class="px-3 py-2 text-left border-b border-gray-200">Req.</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="mode">Mode</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="career">Career</th>
-          <th class="px-3 py-2 text-left border-b border-gray-200" data-col="college">College</th>
+          <th class="px-3 py-2 text-center border-b border-gray-200" data-col="prereqStatus">Prereq</th>
           <th class="px-3 py-2 text-left border-b border-gray-200" data-col="components">Comp.</th>
         </tr>
       </thead>
@@ -255,10 +258,14 @@
     </table>
   </main>
 
-  <!-- Right sidebar: My Courses -->
-  <aside class="w-56 min-w-[14rem] bg-white border-l border-gray-200 overflow-y-auto px-3 py-3 flex-shrink-0 flex flex-col">
+  <!-- Right sidebar: My Courses + Past Courses -->
+  <aside class="w-56 min-w-[14rem] bg-white border-l border-gray-200 overflow-y-auto px-3 py-3 flex-shrink-0">
     <div class="filter-label mb-2">My Courses</div>
-    <div id="my-courses-list" class="text-xs text-gray-400 flex-1"></div>
+    <div id="my-courses-list" class="text-xs text-gray-400"></div>
+    <div class="border-t border-gray-100 mt-3 pt-2">
+      <div class="filter-label mb-2">Past Courses</div>
+      <div id="past-courses-list" class="text-xs"></div>
+    </div>
   </aside>
 
 </div><!-- end inner flex row -->
@@ -326,6 +333,8 @@ let filteredRows = [];
 let sortCol = 'courseId';
 let sortDir = 1;
 let myCourses = []; // {classNbr, label, meetings:[{days:Set,start:int,end:int}]}
+let takenCourses  = new Set(); // courses Adam has taken or is enrolled in
+let pastCourseList = [];       // [{courseId, status:'taken'|'enrolled'}]
 
 
 const filters = {
@@ -345,6 +354,7 @@ const filters = {
   notAfter:    18 * 60,
   timeEnabled: false,
   hideConflicts: false,
+  hideUnmetPrereqs: false,
 };
 
 // ── Time helpers ───────────────────────────────────────────────────────────────
@@ -428,9 +438,21 @@ function buildRows(catalog) {
       reqMatches: [],  // filled after push
     });
     const last = result[result.length - 1];
-    last.reqMatches = REQUIREMENTS.filter(r => r.matches(last)).map(r => r.id);
+    last.reqMatches   = REQUIREMENTS.filter(r => r.matches(last)).map(r => r.id);
+    last.prereqStatus = computePrereqStatus(course);
   }
   return result;
+}
+
+function computePrereqStatus(course) {
+  if (!course.prereqs) return 'none';
+  const p = course.prereqParsed;
+  if (!p || !p.codes.length) return 'unknown';
+  if (!takenCourses.size)    return 'unknown';
+  const met = p.logic === 'or'
+    ? p.codes.some(c => takenCourses.has(c))
+    : p.codes.every(c => takenCourses.has(c));
+  return met ? 'met' : 'unmet';
 }
 
 // ── Filter trigger (shows indicator, defers work so browser can paint first) ──
@@ -485,6 +507,8 @@ function applyFilters() {
 
     if (filters.requirements.size && !row.reqMatches.some(id => filters.requirements.has(id))) return false;
 
+    if (filters.hideUnmetPrereqs && row.prereqStatus === 'unmet') return false;
+
     // Section-level filters: at least one primary section must satisfy all simultaneously
     if (!row.primaries.some(primaryPassesFilters)) return false;
 
@@ -535,7 +559,7 @@ function updateFilterDots() {
   dot('dot-credits',  filters.credits.size > 0);
   dot('dot-mode',     filters.modes.size > 0);
   dot('dot-location', filters.locations.size > 0);
-  dot('dot-status',   filters.openOnly);
+  dot('dot-status',   filters.openOnly || filters.hideUnmetPrereqs);
 }
 
 // ── Sort ──────────────────────────────────────────────────────────────────────
@@ -596,7 +620,12 @@ function renderTable() {
       <td class="px-3 py-1.5">${row.reqMatches.map(id => `<span class="badge ${REQ_BY_ID[id].badgeClass}">${REQ_BY_ID[id].label}</span>`).join(' ')}</td>
       <td class="px-3 py-1.5 text-gray-500">${row.mode || '—'}</td>
       <td class="px-3 py-1.5">${row.career}</td>
-      <td class="px-3 py-1.5">${row.college}</td>
+      <td class="px-3 py-1.5 text-center">${{
+        none:    '',
+        met:     '<span style="color:#065f46;font-weight:700" title="Prereqs met">✓</span>',
+        unmet:   '<span style="color:#991b1b;font-weight:700" title="Prereqs not met">✗</span>',
+        unknown: '<span style="color:#92400e" title="Prereqs listed — verify manually">⚠</span>',
+      }[row.prereqStatus]}</td>
       <td class="px-3 py-1.5 text-gray-400">${row.components}</td>
     </tr>`;
   }).join('');
@@ -816,6 +845,25 @@ function renderMyCourses() {
   }).join('');
 }
 
+function renderPastCourses() {
+  const el = document.getElementById('past-courses-list');
+  if (!pastCourseList.length) { el.innerHTML = '<div class="text-gray-400">—</div>'; return; }
+  const titleMap = new Map(catalog.map(c => [c.courseId, c.titleShort]));
+  el.innerHTML = pastCourseList.map(({courseId, status}) => {
+    const title = titleMap.get(courseId) || '';
+    const badge = status === 'enrolled'
+      ? `<span style="color:#1e40af;font-size:0.6rem;font-weight:600">FA26</span>`
+      : `<span style="color:#065f46;font-weight:700">✓</span>`;
+    return `<div style="padding:3px 0;border-bottom:1px solid #f3f4f6">
+      <div class="flex justify-between items-baseline">
+        <span style="color:#B31B1B;font-weight:600;font-size:0.7rem">${courseId}</span>
+        ${badge}
+      </div>
+      ${title ? `<div style="color:#9ca3af;font-size:0.65rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${title}">${title}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 // ── Populate filter lists ─────────────────────────────────────────────────────
 function makeChecklist(containerId, values, filterKey, labelFn, presorted = false) {
   const el = document.getElementById(containerId);
@@ -916,6 +964,7 @@ function initControls() {
   });
   document.getElementById('f-open-only').addEventListener('change', e => { filters.openOnly = e.target.checked; triggerFilter(); });
   document.getElementById('f-hide-conflicts').addEventListener('change', e => { filters.hideConflicts = e.target.checked; triggerFilter(); });
+  document.getElementById('f-hide-unmet-prereqs').addEventListener('change', e => { filters.hideUnmetPrereqs = e.target.checked; triggerFilter(); });
   document.getElementById('f-time-filter').addEventListener('change', e => {
     filters.timeEnabled = e.target.checked;
     document.getElementById('time-pickers').classList.toggle('hidden-pickers', !e.target.checked);
@@ -1040,7 +1089,10 @@ async function init() {
   document.getElementById('table-body').innerHTML =
     '<tr><td colspan="14" class="px-4 py-10 text-center text-gray-400">Loading catalog…</td></tr>';
   try {
-    const payload = await fetch('data/FA26/catalog.json').then(r => r.json());
+    const [payload, adamData] = await Promise.all([
+      fetch('data/FA26/catalog.json').then(r => r.json()),
+      fetch('data/FA26/adam.json').then(r => r.json()).catch(() => null),
+    ]);
     if (Array.isArray(payload)) {
       catalog = payload; // Fallback for older JSON files
     } else {
@@ -1049,6 +1101,10 @@ async function init() {
         document.getElementById('last-updated').textContent = `(Updated: ${payload.lastUpdated})`;
         document.getElementById('last-updated').style.display = 'inline';
       }
+    }
+    if (adamData) {
+      (adamData.taken    || []).forEach(c => { takenCourses.add(c); pastCourseList.push({courseId: c, status: 'taken'}); });
+      (adamData.enrolled || []).forEach(c => {                      pastCourseList.push({courseId: c, status: 'enrolled'}); });
     }
   } catch(e) {
     document.getElementById('table-body').innerHTML =
@@ -1059,6 +1115,7 @@ async function init() {
   populateFilterOptions();
   initControls();
   restoreMyCourses();
+  renderPastCourses();
   applyFilters();
 }
 

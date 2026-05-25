@@ -2,4 +2,5 @@ data/**
 !data/
 !data/FA26/
 !data/FA26/catalog.json
+!data/FA26/adam.json
 .claude/
