@@ -35,6 +35,11 @@
     .modal-overlay.open { display:block; }
     .modal-box { background:white; border-radius:8px; width:680px; max-width:100%; margin:0 auto; padding:24px; }
     .mc-item { display:flex; justify-content:space-between; align-items:flex-start; font-size:0.75rem; padding:4px 0; border-bottom:1px solid #f3f4f6; }
+    .cal-day-hdr { text-align:center; font-size:0.7rem; font-weight:600; color:#9ca3af; padding:3px 0; border-bottom:1px solid #e5e7eb; flex-shrink:0; }
+    .cal-day-body { flex:1; position:relative; overflow:hidden; }
+    .cal-block { position:absolute; left:2px; right:2px; border-radius:3px; padding:2px 4px; overflow:hidden; font-size:0.6rem; font-weight:600; line-height:1.3; cursor:default; }
+    .cal-hour-line { position:absolute; left:0; right:0; border-top:1px solid #f3f4f6; }
+    .cal-hour-label { position:absolute; right:3px; font-size:0.55rem; color:#9ca3af; transform:translateY(-50%); }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 text-sm h-screen flex flex-col">
@@ -44,9 +49,12 @@
   <span class="font-bold text-base tracking-tight">CU Course Scheduler</span>
   <span class="text-red-300 text-xs font-mono">FA26</span>
   <span id="result-count" class="ml-auto text-red-300 text-xs"></span>
+  <button id="cal-btn" onclick="toggleCalendar()"
+    class="ml-3 px-3 py-1 rounded text-xs border border-red-400 text-red-200 hover:bg-red-800">Calendar</button>
   <span id="filter-indicator" class="absolute left-1/2 -translate-x-1/2 text-red-200 text-xs tracking-wide" style="display:none">Filtering…</span>
 </header>
 
+<div class="flex flex-col flex-1 min-h-0">
 <div class="flex flex-1 min-h-0">
 
   <!-- Sidebar -->
@@ -178,6 +186,17 @@
       </div>
     </div>
 
+    <!-- Location (collapsed by default) -->
+    <div class="filter-section collapsed">
+      <div class="filter-toggle">
+        <div class="filter-label">Location</div>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="filter-body">
+        <div id="location-list" class="checklist"></div>
+      </div>
+    </div>
+
     <!-- Status (collapsed by default) -->
     <div class="filter-section collapsed">
       <div class="filter-toggle">
@@ -223,7 +242,40 @@
     <div id="my-courses-list" class="text-xs text-gray-400 flex-1"></div>
   </aside>
 
+</div><!-- end inner flex row -->
+
+<!-- Calendar panel -->
+<div id="cal-panel" class="flex-shrink-0 bg-white border-t border-gray-200" style="display:none; height:280px;">
+  <div class="flex h-full">
+    <!-- Time axis -->
+    <div class="w-10 flex-shrink-0 border-r border-gray-100 relative bg-gray-50" id="cal-time-col"></div>
+    <!-- Day columns -->
+    <div class="flex flex-1 min-w-0">
+      <div class="flex-1 flex flex-col border-r border-gray-100 min-w-0">
+        <div class="cal-day-hdr">Mon</div>
+        <div class="cal-day-body" id="cal-col-M"></div>
+      </div>
+      <div class="flex-1 flex flex-col border-r border-gray-100 min-w-0">
+        <div class="cal-day-hdr">Tue</div>
+        <div class="cal-day-body" id="cal-col-T"></div>
+      </div>
+      <div class="flex-1 flex flex-col border-r border-gray-100 min-w-0">
+        <div class="cal-day-hdr">Wed</div>
+        <div class="cal-day-body" id="cal-col-W"></div>
+      </div>
+      <div class="flex-1 flex flex-col border-r border-gray-100 min-w-0">
+        <div class="cal-day-hdr">Thu</div>
+        <div class="cal-day-body" id="cal-col-R"></div>
+      </div>
+      <div class="flex-1 flex flex-col min-w-0">
+        <div class="cal-day-hdr">Fri</div>
+        <div class="cal-day-body" id="cal-col-F"></div>
+      </div>
+    </div>
+  </div>
 </div>
+
+</div><!-- end outer flex col -->
 
 <!-- Modal -->
 <div id="modal" class="modal-overlay" onclick="maybeCloseModal(event)">
@@ -259,6 +311,7 @@ const filters = {
   colleges:    new Set(),
   credits:     new Set(),
   modes:       new Set(),
+  locations:   new Set(['Ithaca, NY (Main Campus)']),
   openOnly:    false,
   distrReqs:   new Set(),
   distrReqType:'any',
@@ -334,6 +387,7 @@ function buildRows(catalog) {
         distrReqs:  course.distrReqs || [],
         distrKey:   (course.distrReqs || []).join(','),
         mode:       sec.instructionMode || '',
+        location:   sec.location || '',
         status:     sec.openStatus || '',
         career:     course.acadCareer || '',
         college:    course.acadGroup || '',
@@ -372,6 +426,7 @@ function applyFilters() {
     if (filters.colleges.size   && !filters.colleges.has(row.college))   return false;
     if (filters.credits.size    && !filters.credits.has(row.credits))    return false;
     if (filters.modes.size      && !filters.modes.has(row.mode))         return false;
+    if (filters.locations.size  && !filters.locations.has(row.location)) return false;
     if (filters.openOnly        && row.status !== 'O')                   return false;
 
     if (filters.distrReqs.size) {
@@ -453,7 +508,7 @@ function renderTable() {
     const instr = row.instructor ? row.instructor.split(' ').pop() : '—';
     const badges = row.distrReqs.map(c =>
       `<span class="badge badge-distr" title="${c}">${c.split('-')[0]}</span>`).join('');
-    return `<tr class="row border-b border-gray-100 ${bg}" onclick="showModal(${i})">
+    return `<tr class="row border-b border-gray-100 ${bg}" data-row-idx="${i}" onclick="showModal(${i})">
       <td class="px-3 py-1.5 font-medium" style="color:#B31B1B">${row.courseId}</td>
       <td class="px-3 py-1.5 text-gray-400">§${row.sectionCode}</td>
       <td class="px-3 py-1.5 max-w-[200px] truncate" title="${row.title}">${row.title}</td>
@@ -579,6 +634,7 @@ function addMyCourseBySection(classNbr, courseId, sectionCode) {
   myCourses.push({ classNbr, label: `${courseId} §${sectionCode}`, meetings });
   saveMyCourses();
   renderMyCourses();
+  renderCalendar();
   if (modalCourse) renderModalSections(modalCourse);
   triggerFilter();
 }
@@ -587,6 +643,7 @@ function removeMyCourse(classNbr) {
   myCourses = myCourses.filter(mc => mc.classNbr !== classNbr);
   saveMyCourses();
   renderMyCourses();
+  renderCalendar();
   triggerFilter();
 }
 
@@ -630,10 +687,12 @@ function renderMyCourses() {
 }
 
 // ── Populate filter lists ─────────────────────────────────────────────────────
-function makeChecklist(containerId, values, filterKey, labelFn) {
+function makeChecklist(containerId, values, filterKey, labelFn, presorted = false) {
   const el = document.getElementById(containerId);
-  el.innerHTML = [...values].sort().map(v =>
-    `<label><input type="checkbox" data-filter="${filterKey}" value="${v}"> ${labelFn ? labelFn(v) : v}</label>`
+  const set = filters[filterKey];
+  const sorted = presorted ? [...values] : [...values].sort();
+  el.innerHTML = sorted.map(v =>
+    `<label><input type="checkbox" data-filter="${filterKey}" value="${v}"${set && set.has(v) ? ' checked' : ''}> ${labelFn ? labelFn(v) : v}</label>`
   ).join('');
   el.querySelectorAll('input').forEach(cb => cb.addEventListener('change', onCheck));
 }
@@ -643,7 +702,9 @@ function populateFilterOptions() {
   const careers  = [...new Set(rows.map(r => r.career).filter(Boolean))];
   const colleges = [...new Set(rows.map(r => r.college).filter(Boolean))];
   const credits  = [...new Set(rows.map(r => r.credits).filter(Boolean))];
-  const modes    = [...new Set(rows.map(r => r.mode).filter(Boolean))];
+  const modes     = [...new Set(rows.map(r => r.mode).filter(Boolean))];
+  const _locs = [...new Set(rows.map(r => r.location).filter(Boolean))];
+  const locations = ['Ithaca, NY (Main Campus)', ..._locs.filter(l => l !== 'Ithaca, NY (Main Campus)').sort()];
 
   // Subjects with live filter
   function renderSubjects(q = '') {
@@ -659,7 +720,8 @@ function populateFilterOptions() {
   makeChecklist('career-list',  careers,  'careers',  null);
   makeChecklist('college-list', colleges, 'colleges', null);
   makeChecklist('credits-list', credits.sort((a,b) => parseFloat(a)-parseFloat(b)), 'credits', null);
-  makeChecklist('mode-list',    modes,    'modes',    null);
+  makeChecklist('mode-list',     modes,     'modes',     null);
+  makeChecklist('location-list', locations, 'locations', null, true);
 
   // Distribution requirements with counts
   const distrMap = {};
@@ -741,7 +803,109 @@ function initControls() {
   document.querySelectorAll('.filter-toggle').forEach(toggle => {
     toggle.addEventListener('click', () => toggle.closest('.filter-section').classList.toggle('collapsed'));
   });
+
+  const tbody = document.getElementById('table-body');
+  tbody.addEventListener('mouseover', e => {
+    const tr = e.target.closest('tr[data-row-idx]');
+    if (!tr) return;
+    const row = filteredRows[parseInt(tr.dataset.rowIdx)];
+    if (row && row !== previewRow) setPreview(row);
+  });
+  tbody.addEventListener('mouseleave', () => clearPreview());
 }
+
+// ── Calendar ──────────────────────────────────────────────────────────────────
+const CAL_START = 8 * 60;   // 8:00 AM
+const CAL_END   = 21 * 60;  // 9:00 PM
+const CAL_SPAN  = CAL_END - CAL_START;
+const CAL_DAYS  = ['M','T','W','R','F'];
+const COLORS    = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1'];
+const courseColorMap = new Map();
+let colorIdx = 0;
+let calVisible  = false;
+let previewRow  = null;
+
+function getCourseColor(courseId) {
+  if (!courseColorMap.has(courseId)) courseColorMap.set(courseId, COLORS[colorIdx++ % COLORS.length]);
+  return courseColorMap.get(courseId);
+}
+
+function pct(min) { return Math.max(0, Math.min(100, (min - CAL_START) / CAL_SPAN * 100)); }
+
+function calBlock(label, startMin, endMin, color, ghost) {
+  const top = pct(startMin), h = pct(endMin) - pct(startMin);
+  if (h <= 0) return '';
+  const bg      = ghost ? 'white' : color;
+  const border  = ghost ? `1.5px dashed ${color}` : 'none';
+  const txtColor= ghost ? color : 'white';
+  const opacity = ghost ? '0.85' : '1';
+  return `<div class="cal-block" style="top:${top}%;height:${h}%;background:${bg};border:${border};color:${txtColor};opacity:${opacity};" title="${label}">
+    ${label}
+  </div>`;
+}
+
+function renderCalendar() {
+  if (!calVisible) return;
+
+  const cols = { M:'', T:'', W:'', R:'', F:'' };
+
+  // Committed courses — all meetings of each locked section
+  for (const mc of myCourses) {
+    let course = null, sec = null;
+    for (const c of catalog) {
+      sec = c.sections?.find(s => s.classNbr === mc.classNbr);
+      if (sec) { course = c; break; }
+    }
+    if (!course || !sec) continue;
+    const color = getCourseColor(course.courseId);
+    const label = `${course.courseId} §${sec.section}`;
+    for (const m of (sec.meetings || [])) {
+      const s = parseTime(m.timeStart), e = parseTime(m.timeEnd);
+      if (!s || !e) continue;
+      for (const day of parseDays(m.days)) {
+        if (day in cols) cols[day] += calBlock(label, s, e, color, false);
+      }
+    }
+  }
+
+  // Preview ghost — lecture meeting only
+  if (previewRow && previewRow.timeStartMin) {
+    const color = getCourseColor(previewRow.courseId);
+    const label = `${previewRow.courseId} §${previewRow.sectionCode}`;
+    for (const day of previewRow.daySet) {
+      if (day in cols) cols[day] += calBlock(label, previewRow.timeStartMin, previewRow.timeEndMin, color, true);
+    }
+  }
+
+  CAL_DAYS.forEach(d => { document.getElementById(`cal-col-${d}`).innerHTML = cols[d]; });
+}
+
+function buildTimeAxis() {
+  const col = document.getElementById('cal-time-col');
+  let html = '';
+  for (let min = CAL_START; min <= CAL_END; min += 60) {
+    const top = pct(min);
+    const label = min < 12*60 ? `${min/60}am` : min === 12*60 ? '12pm' : `${min/60-12}pm`;
+    html += `<div class="cal-hour-label" style="top:${top}%">${label}</div>`;
+    // Also draw gridlines in each day col
+    CAL_DAYS.forEach(d => {
+      const body = document.getElementById(`cal-col-${d}`);
+      if (body) body.insertAdjacentHTML('beforeend',
+        `<div class="cal-hour-line" style="top:${top}%"></div>`);
+    });
+  }
+  col.innerHTML = html;
+}
+
+function toggleCalendar() {
+  calVisible = !calVisible;
+  document.getElementById('cal-panel').style.display = calVisible ? 'flex' : 'none';
+  document.getElementById('cal-btn').textContent = calVisible ? 'Hide Calendar' : 'Calendar';
+  if (calVisible) { buildTimeAxis(); renderCalendar(); }
+}
+
+function setPreview(row) { previewRow = row; renderCalendar(); }
+function clearPreview()   { previewRow = null; renderCalendar(); }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
