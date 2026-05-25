@@ -486,12 +486,19 @@ function buildRows(catalog) {
 function computePrereqStatus(course) {
   if (!course.prereqs) return 'none';
   const p = course.prereqParsed;
-  if (!p || !p.codes.length) return 'unknown';
-  if (!takenCourses.size)    return 'unknown';
-  const met = p.logic === 'or'
-    ? p.codes.some(c => takenCourses.has(c))
-    : p.codes.every(c => takenCourses.has(c));
-  return met ? 'met' : 'unmet';
+  if (!p?.clauses?.length) return 'unknown';
+  if (!takenCourses.size)  return 'unknown';
+  let hasUnknown = false;
+  for (const clause of p.clauses) {
+    const met = clause.logic === 'or'
+      ? clause.codes.some(c => takenCourses.has(c))
+      : clause.codes.every(c => takenCourses.has(c));
+    if (!met) {
+      if (!clause.orEquiv) return 'unmet';
+      hasUnknown = true;
+    }
+  }
+  return hasUnknown ? 'unknown' : 'met';
 }
 
 // ── Filter trigger (shows indicator, defers work so browser can paint first) ──

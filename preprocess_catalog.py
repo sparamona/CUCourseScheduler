@@ -14,15 +14,61 @@ import datetime
 from pathlib import Path
 
 _COURSE_CODE = re.compile(r'[A-Z]{2,8}\s+\d{4}')
-_OR_SIGNAL   = re.compile(r'\bor\b|one of|any of|at least one', re.I)
+_GLOBAL_OR   = re.compile(r'one of|any of|at least one', re.I)
+_CLAUSE_OR   = re.compile(r'\bor\b', re.I)
+# Segments that are purely whitespace / punctuation with no real text
+_TRIVIAL_SEG = re.compile(r'^[\s,;.()\[\]:]*$')
+
+
+def _is_clean(text, strip_global_or=False):
+    """Whitelist check: return True only if text contains nothing but course codes,
+    'or'/'and' connectors, and punctuation/whitespace.  Any other words → not clean.
+    strip_global_or=True also strips the standard 'one of / any of / at least one /
+    the following' intro phrases before checking.
+    """
+    s = _COURSE_CODE.sub('', text)
+    s = re.sub(r'\b(?:or|and)\b', '', s, flags=re.I)
+    if strip_global_or:
+        s = re.sub(r'\b(?:one of|any of|at least one|the following)\b', '', s, flags=re.I)
+    s = re.sub(r'[\s,;.()\[\]:]+', '', s)
+    return s == ''
+
 
 def parse_prereqs(text):
     if not text:
         return None
-    codes = _COURSE_CODE.findall(text)
-    if not codes:
-        return None
-    return {'codes': codes, 'logic': 'or' if _OR_SIGNAL.search(text) else 'and'}
+    # "one of / any of / at least one" → all codes are OR alternatives
+    if _GLOBAL_OR.search(text):
+        codes = _COURSE_CODE.findall(text)
+        if not codes:
+            return None
+        return {'clauses': [{'codes': codes, 'logic': 'or',
+                             'orEquiv': not _is_clean(text, strip_global_or=True)}]}
+    # Split by comma/semicolon into segments
+    segments = re.split(r'[,;]', text)
+    # If any segment after the first starts with "or", the whole comma list is OR alternatives
+    # e.g. "MATH 2210, MATH 2310, or MATH 2940"  or  "AEM 2100, AEM 2225, or equivalents"
+    if any(_CLAUSE_OR.match(seg.lstrip()) for seg in segments[1:]):
+        codes = _COURSE_CODE.findall(text)
+        if not codes:
+            return None
+        return {'clauses': [{'codes': codes, 'logic': 'or',
+                             'orEquiv': not _is_clean(text)}]}
+    # Otherwise each segment is a separate AND-required clause
+    clauses = []
+    for seg in segments:
+        codes = _COURSE_CODE.findall(seg)
+        if not codes:
+            # Non-trivial segment with no codes = unrecognised requirement → vague
+            if not _TRIVIAL_SEG.match(seg):
+                clauses.append({'codes': [], 'logic': 'or', 'orEquiv': True})
+            continue
+        clauses.append({
+            'codes':   codes,
+            'logic':   'or' if _CLAUSE_OR.search(seg) else 'and',
+            'orEquiv': not _is_clean(seg),
+        })
+    return {'clauses': clauses} if clauses else None
 
 
 def flatten_section(sec: dict, meetings: list) -> dict:
