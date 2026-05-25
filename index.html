@@ -40,10 +40,11 @@
 <body class="bg-gray-50 text-gray-800 text-sm h-screen flex flex-col">
 
 <!-- Header -->
-<header class="flex items-center gap-4 px-5 py-2.5 text-white shadow-sm flex-shrink-0" style="background:#B31B1B;">
+<header class="relative flex items-center gap-4 px-5 py-2.5 text-white shadow-sm flex-shrink-0" style="background:#B31B1B;">
   <span class="font-bold text-base tracking-tight">CU Course Scheduler</span>
   <span class="text-red-300 text-xs font-mono">FA26</span>
   <span id="result-count" class="ml-auto text-red-300 text-xs"></span>
+  <span id="filter-indicator" class="absolute left-1/2 -translate-x-1/2 text-red-200 text-xs tracking-wide" style="display:none">Filtering…</span>
 </header>
 
 <div class="flex flex-1 min-h-0">
@@ -54,8 +55,13 @@
     <!-- Search (always visible, no toggle) -->
     <div class="filter-section">
       <div class="filter-label mb-1">Search</div>
-      <input id="f-search" type="text" placeholder="Course code or title…"
-        class="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-red-700">
+      <div class="relative">
+        <input id="f-search" type="text" placeholder="Course code or title…"
+          class="w-full border border-gray-300 rounded px-2 py-1.5 pr-6 text-xs focus:outline-none focus:border-red-700">
+        <button id="f-search-clear" onclick="clearSearch()"
+          class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600 leading-none text-base"
+          style="display:none">&times;</button>
+      </div>
     </div>
 
     <!-- Schedule (collapsed by default) -->
@@ -339,6 +345,20 @@ function buildRows(catalog) {
   return result;
 }
 
+// ── Filter trigger (shows indicator, defers work so browser can paint first) ──
+let filterPending = false;
+function triggerFilter() {
+  document.getElementById('filter-indicator').style.display = 'inline';
+  document.getElementById('result-count').style.display = 'none';
+  if (!filterPending) {
+    filterPending = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      filterPending = false;
+      applyFilters();
+    }));
+  }
+}
+
 // ── Filter ────────────────────────────────────────────────────────────────────
 function applyFilters() {
   const q = filters.search.toLowerCase();
@@ -385,6 +405,8 @@ function applyFilters() {
 
   sortRows();
   renderTable();
+  document.getElementById('filter-indicator').style.display = 'none';
+  document.getElementById('result-count').style.display = 'inline';
   document.getElementById('result-count').textContent =
     `${filteredRows.length.toLocaleString()} of ${rows.length.toLocaleString()} sections`;
 }
@@ -550,13 +572,13 @@ function addMyCourseBySection(classNbr, courseId, sectionCode) {
     .filter(m => m.start !== null);
   myCourses.push({ classNbr, label: `${courseId} §${sectionCode}`, meetings });
   renderMyCourses();
-  applyFilters();
+  triggerFilter();
 }
 
 function removeMyCourse(classNbr) {
   myCourses = myCourses.filter(mc => mc.classNbr !== classNbr);
   renderMyCourses();
-  applyFilters();
+  triggerFilter();
 }
 
 function renderMyCourses() {
@@ -641,40 +663,54 @@ function populateFilterOptions() {
   document.getElementById('distr-search').addEventListener('input', e => renderDistrs(e.target.value));
 }
 
+function clearSearch() {
+  const input = document.getElementById('f-search');
+  input.value = '';
+  document.getElementById('f-search-clear').style.display = 'none';
+  filters.search = '';
+  triggerFilter();
+}
+
 function onCheck(e) {
   const key = e.target.dataset.filter;
   e.target.checked ? filters[key].add(e.target.value) : filters[key].delete(e.target.value);
-  applyFilters();
+  triggerFilter();
 }
 
 // ── Wire controls ─────────────────────────────────────────────────────────────
 function initControls() {
+  const indicator = () => {
+    document.getElementById('filter-indicator').style.display = 'inline';
+    document.getElementById('result-count').style.display = 'none';
+  };
   let searchTimer = null;
   document.getElementById('f-search').addEventListener('input', e => {
     const val = e.target.value;
+    document.getElementById('f-search-clear').style.display = val ? 'block' : 'none';
     if (val.length > 0 && val.length < 3) return;
+    indicator();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => { filters.search = val; applyFilters(); }, 200);
   });
-  document.getElementById('f-open-only').addEventListener('change', e => { filters.openOnly = e.target.checked; applyFilters(); });
-  document.getElementById('f-hide-conflicts').addEventListener('change', e => { filters.hideConflicts = e.target.checked; applyFilters(); });
+  document.getElementById('f-open-only').addEventListener('change', e => { filters.openOnly = e.target.checked; triggerFilter(); });
+  document.getElementById('f-hide-conflicts').addEventListener('change', e => { filters.hideConflicts = e.target.checked; triggerFilter(); });
   document.getElementById('f-time-filter').addEventListener('change', e => {
     filters.timeEnabled = e.target.checked;
     document.getElementById('time-pickers').classList.toggle('hidden-pickers', !e.target.checked);
-    applyFilters();
+    triggerFilter();
   });
   document.querySelectorAll('input[name="distr-type"]').forEach(r =>
-    r.addEventListener('change', e => { filters.distrReqType = e.target.value; applyFilters(); }));
+    r.addEventListener('change', e => { filters.distrReqType = e.target.value; triggerFilter(); }));
   document.querySelectorAll('[data-day]').forEach(cb =>
     cb.addEventListener('change', e => {
       e.target.checked ? filters.excludeDays.add(e.target.dataset.day) : filters.excludeDays.delete(e.target.dataset.day);
-      applyFilters();
+      triggerFilter();
     }));
   document.getElementById('f-not-before').addEventListener('change', e => {
-    const [h,m] = e.target.value.split(':').map(Number); filters.notBefore = h*60+m; applyFilters();
+    const [h,m] = e.target.value.split(':').map(Number); filters.notBefore = h*60+m; triggerFilter();
   });
   document.getElementById('f-not-after').addEventListener('change', e => {
-    const [h,m] = e.target.value.split(':').map(Number); filters.notAfter = h*60+m; applyFilters();
+    const [h,m] = e.target.value.split(':').map(Number); filters.notAfter = h*60+m; triggerFilter();
   });
   document.querySelectorAll('th[data-col]').forEach(th =>
     th.addEventListener('click', () => setSort(th.dataset.col)));
