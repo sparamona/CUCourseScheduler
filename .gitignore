@@ -4,3 +4,5 @@ data/**
 !data/FA26/catalog.json
 !data/FA26/adam.json
 .claude/
+__pycache__/
+*.pyc
